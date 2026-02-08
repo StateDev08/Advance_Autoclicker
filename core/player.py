@@ -29,6 +29,7 @@ class MacroPlayer:
         
         self.on_progress_callback = None
         self.on_complete_callback = None
+        self.on_action_event_callback = None  # (event_type, status, details)
         
         # Neue Features
         self.image_recognition = ImageRecognition()
@@ -156,6 +157,23 @@ class MacroPlayer:
                             total = loop_count * len(actions)
                             progress = min(100.0, ((self.current_loop * len(actions) + i + 1) / total) * 100)
                         self.on_progress_callback(progress, self.current_loop + 1, i + 1)
+                    
+                    # Skill-Rotation an Overlay melden (nächste Aktionen)
+                    if self.on_action_event_callback:
+                        next_actions = []
+                        for idx in range(i + 1, min(i + 6, len(actions))):
+                            next_act = actions[idx]
+                            atype = next_act.get('type', 'unknown')
+                            # Lesbare Namen für Overlay
+                            name_map = {
+                                'mouse_click': 'Klick',
+                                'key_press': f"Taste {next_act.get('key', '')}",
+                                'wait': 'Warten',
+                                'image_recognition': 'Bild suchen',
+                                'wait_for_image': 'Bild warten'
+                            }
+                            next_actions.append(name_map.get(atype, atype))
+                        self.on_action_event_callback('skill_rotation', 'update', next_actions)
                 
                 if self.should_stop:
                     break
@@ -179,160 +197,157 @@ class MacroPlayer:
                 self.on_complete_callback()
     
     def _execute_action(self, action: Dict):
-        """Führt eine einzelne Aktion aus (erweitert)"""
+        """Führt eine einzelne Aktion aus (erweitert mit validierung)"""
+        if not action:
+            self.logger.warning("Leere Aktion übersprungen")
+            return
+
         action_type = action.get('type')
+        if not action_type:
+            self.logger.warning(f"Aktion ohne Typ übersprungen: {action}")
+            return
         
-        # Neue Action-Typen mit erweiterten Features
-        if action_type == 'set_variable':
-            self._action_set_variable(action)
-        
-        elif action_type == 'if_condition':
-            self._action_if_condition(action)
-        
-        elif action_type == 'wait_for_image':
-            self._action_wait_for_image(action)
-        
-        elif action_type == 'click_on_image':
-            self._action_click_on_image(action)
-        
-        elif action_type == 'wait':
-            self._action_wait(action)
-        
-        elif action_type == 'log_message':
-            self._action_log_message(action)
-        
-        elif action_type == 'type_text':
-            self._action_type_text(action)
-        
-        elif action_type == 'double_click':
-            self._action_double_click(action)
-        
-        elif action_type == 'wait_for_pixel_color':
-            self._action_wait_for_pixel_color(action)
-        
-        elif action_type == 'click_at_color':
-            self._action_click_at_color(action)
-        
-        elif action_type == 'wait_for_any_color':
-            self._action_wait_for_any_color(action)
-        
-        elif action_type == 'click_at_any_color':
-            self._action_click_at_any_color(action)
-        
-        elif action_type == 'random_delay':
-            self._action_random_delay(action)
-        elif action_type == 'reaction_delay':
-            self._action_reaction_delay(action)
-        elif action_type == 'wait_for_health_color':
-            self._action_wait_for_health_color(action)
-        elif action_type == 'click_at_health_color':
-            self._action_click_at_health_color(action)
-        elif action_type == 'cooldown_wait':
-            self._action_cooldown_wait(action)
-        
-        elif action_type == 'human_mouse_move':
-            self._action_human_mouse_move(action)
-        elif action_type == 'hold_key':
-            self._action_hold_key(action)
-        elif action_type == 'release_key':
-            self._action_release_key(action)
-        elif action_type == 'mouse_drag':
-            self._action_mouse_drag(action)
-        elif action_type == 'wait_for_image_region':
-            self._action_wait_for_image_region(action)
-        elif action_type == 'random_click_region':
-            self._action_random_click_region(action)
-        elif action_type == 'key_sequence':
-            self._action_key_sequence(action)
-        elif action_type == 'jump_to_action':
-            self._action_jump_to_action(action)
-        
-        # Bestehende Action-Typen
-        elif action_type == 'mouse_move':
-            x = action.get('x', 0)
-            y = action.get('y', 0)
-            if isinstance(x, str):
-                x = int(self.variable_manager.evaluate(x))
-            if isinstance(y, str):
-                y = int(self.variable_manager.evaluate(y))
-            x, y = self._resolve_xy(x, y, action)
-            self.mouse_controller.position = (x, y)
-            self.logger.log_macro_action('mouse_move', f'({x}, {y})')
-        
-        elif action_type == 'mouse_click':
-            x = action.get('x', 0)
-            y = action.get('y', 0)
-            button_name = str(action.get('button', 'left')).lower()
-            pressed = action.get('pressed', True)
-            if isinstance(x, str):
-                x = int(self.variable_manager.evaluate(x))
-            if isinstance(y, str):
-                y = int(self.variable_manager.evaluate(y))
-            x, y = self._resolve_xy(x, y, action)
-            x, y = self._apply_click_offset(x, y)
-            self.mouse_controller.position = (x, y)
-            
-            # Standard: linke Maustaste
-            button = Button.left
-            if button_name in ("left", "mouse_left"):
-                button = Button.left
-            elif button_name in ("right", "mouse_right"):
-                button = Button.right
-            elif button_name in ("middle", "mouse_middle"):
-                button = Button.middle
-            elif button_name in ("x1", "mouse_x1", "button8"):
-                try:
-                    button = Button.x1
-                except AttributeError:
-                    button = Button.right
-            elif button_name in ("x2", "mouse_x2", "button9"):
-                try:
-                    return self.mouse_controller.press(Button.x2) if pressed else self.mouse_controller.release(Button.x2)
-                except AttributeError:
-                    button = Button.right
-            
-            if pressed:
-                self.mouse_controller.press(button)
+        # Mapping von Typ zu Methode für Spezial-Aktionen
+        action_map = {
+            'set_variable': self._action_set_variable,
+            'if_condition': self._action_if_condition,
+            'wait_for_image': self._action_wait_for_image,
+            'click_on_image': self._action_click_on_image,
+            'wait': self._action_wait,
+            'log_message': self._action_log_message,
+            'type_text': self._action_type_text,
+            'double_click': self._action_double_click,
+            'wait_for_pixel_color': self._action_wait_for_pixel_color,
+            'click_at_color': self._action_click_at_color,
+            'wait_for_any_color': self._action_wait_for_any_color,
+            'click_at_any_color': self._action_click_at_any_color,
+            'random_delay': self._action_random_delay,
+            'reaction_delay': self._action_reaction_delay,
+            'wait_for_health_color': self._action_wait_for_health_color,
+            'click_at_health_color': self._action_click_at_health_color,
+            'cooldown_wait': self._action_cooldown_wait,
+            'human_mouse_move': self._action_human_mouse_move,
+            'hold_key': self._action_hold_key,
+            'release_key': self._action_release_key,
+            'mouse_drag': self._action_mouse_drag,
+            'wait_for_image_region': self._action_wait_for_image_region,
+            'random_click_region': self._action_random_click_region,
+            'key_sequence': self._action_key_sequence,
+            'jump_to_action': self._action_jump_to_action
+        }
+
+        if action_type in action_map:
+            try:
+                action_map[action_type](action)
+            except Exception as e:
+                self.logger.error(f"Fehler bei Spezial-Aktion '{action_type}': {str(e)}")
+                raise
+            return
+
+        # Basis-Aktionen (Maus/Tastatur)
+        try:
+            if action_type == 'mouse_move':
+                self._handle_mouse_move(action)
+            elif action_type == 'mouse_click':
+                self._handle_mouse_click(action)
+            elif action_type == 'mouse_scroll':
+                self._handle_mouse_scroll(action)
+            elif action_type == 'key_press':
+                self._handle_key_press(action)
+            elif action_type == 'key_release':
+                self._handle_key_release(action)
+            elif action_type == 'set_status_bar':
+                self._action_set_status_bar(action)
             else:
-                self.mouse_controller.release(button)
-            
-            self.logger.log_macro_action('mouse_click', f'{button_name} at ({x}, {y})')
+                self.logger.warning(f"Unbekannter Aktionstyp: {action_type}")
+        except Exception as e:
+            self.logger.error(f"Fehler bei Basis-Aktion '{action_type}': {str(e)}")
+            raise
+
+    def _action_set_status_bar(self, action: Dict):
+        """Setzt den Wert der Statusleiste im Overlay (z. B. HP)."""
+        percent = action.get('percent', 100)
+        color = action.get('color', '0,200,100')
+        if isinstance(percent, str):
+            percent = float(self.variable_manager.evaluate(percent))
+        if self.on_action_event_callback:
+            self.on_action_event_callback('status_bar', 'update', (percent, color))
+
+    def _handle_mouse_move(self, action: Dict):
+        x, y = self._get_coords(action)
+        x, y = self._resolve_xy(x, y, action)
+        self.mouse_controller.position = (x, y)
+        self.logger.log_macro_action('mouse_move', f'({x}, {y})')
+
+    def _handle_mouse_click(self, action: Dict):
+        x, y = self._get_coords(action)
+        button_name = str(action.get('button', 'left')).lower()
+        pressed = action.get('pressed', True)
         
-        elif action_type == 'mouse_scroll':
-            x = action.get('x', 0)
-            y = action.get('y', 0)
-            dx = action.get('dx', 0)
-            dy = action.get('dy', 0)
-            if isinstance(x, str):
-                x = int(self.variable_manager.evaluate(x))
-            if isinstance(y, str):
-                y = int(self.variable_manager.evaluate(y))
-            if isinstance(dx, str):
-                dx = int(self.variable_manager.evaluate(dx))
-            if isinstance(dy, str):
-                dy = int(self.variable_manager.evaluate(dy))
-            x, y = self._resolve_xy(x, y, action)
-            self.mouse_controller.position = (x, y)
-            self.mouse_controller.scroll(dx, dy)
-            self.logger.log_macro_action('mouse_scroll', f'dx={dx}, dy={dy}')
+        x, y = self._resolve_xy(x, y, action)
+        x, y = self._apply_click_offset(x, y)
+        self.mouse_controller.position = (x, y)
         
-        elif action_type == 'key_press':
-            key_name = action.get('key')
+        button = self._parse_button(button_name)
+        if pressed:
+            self.mouse_controller.press(button)
+        else:
+            self.mouse_controller.release(button)
+        self.logger.log_macro_action('mouse_click', f'{button_name} at ({x}, {y}), pressed={pressed}')
+
+    def _handle_mouse_scroll(self, action: Dict):
+        x, y = self._get_coords(action)
+        dx = action.get('dx', 0)
+        dy = action.get('dy', 0)
+        
+        if isinstance(dx, str): dx = int(float(self.variable_manager.evaluate(dx)))
+        if isinstance(dy, str): dy = int(float(self.variable_manager.evaluate(dy)))
+        
+        x, y = self._resolve_xy(x, y, action)
+        self.mouse_controller.position = (x, y)
+        self.mouse_controller.scroll(dx, dy)
+        self.logger.log_macro_action('mouse_scroll', f'dx={dx}, dy={dy} at ({x}, {y})')
+
+    def _handle_key_press(self, action: Dict):
+        key_name = action.get('key')
+        if key_name:
             key = self._parse_key(key_name)
             if key:
                 self.keyboard_controller.press(key)
-                self.logger.log_macro_action('key_press', key_name)
-        
-        elif action_type == 'key_release':
-            key_name = action.get('key')
+                self.logger.log_macro_action('key_press', f'{key_name}')
+
+    def _handle_key_release(self, action: Dict):
+        key_name = action.get('key')
+        if key_name:
             key = self._parse_key(key_name)
             if key:
                 self.keyboard_controller.release(key)
-                self.logger.log_macro_action('key_release', key_name)
+                self.logger.log_macro_action('key_release', f'{key_name}')
+
+    def _get_coords(self, action: Dict) -> Tuple[int, int]:
+        x = action.get('x', 0)
+        y = action.get('y', 0)
+        if isinstance(x, str):
+            x = self.variable_manager.evaluate(x)
+        if isinstance(y, str):
+            y = self.variable_manager.evaluate(y)
+        try:
+            return int(float(x)), int(float(y))
+        except (ValueError, TypeError):
+            return 0, 0
+
+    def _parse_button(self, name: str) -> Button:
+        name = name.lower()
+        if 'right' in name: return Button.right
+        if 'middle' in name: return Button.middle
+        if 'x1' in name or 'button8' in name:
+            try: return Button.x1
+            except AttributeError: return Button.right
+        if 'x2' in name or 'button9' in name:
+            try: return Button.x2
+            except AttributeError: return Button.right
+        return Button.left
         
-        else:
-            self.logger.warning(f"Unbekannter Action-Typ: {action_type}")
-    
     def _resolve_xy(self, x: int, y: int, action: Dict) -> tuple:
         """Konvertiert (x,y) zu absoluten Koordinaten wenn action monitor_id hat."""
         monitor_id = action.get('monitor_id')
@@ -395,9 +410,13 @@ class MacroPlayer:
             self.variable_manager.set('image_y', match.center[1])
             self.variable_manager.set('image_found', True)
             self.logger.log_macro_action('wait_for_image', f'Gefunden bei ({match.center[0]}, {match.center[1]})')
+            if self.on_action_event_callback:
+                self.on_action_event_callback('image_recognition', 'success', template_name)
         else:
             self.variable_manager.set('image_found', False)
             self.logger.warning(f'Bild {template_name} nicht gefunden innerhalb {timeout}s')
+            if self.on_action_event_callback:
+                self.on_action_event_callback('image_recognition', 'fail', template_name)
     
     def _action_click_on_image(self, action: Dict):
         """Klickt auf ein Bild (optional: match_index für n-tes Vorkommen, 0-basiert)."""
@@ -581,6 +600,11 @@ class MacroPlayer:
         self.variable_manager.set('pixel_color_found', found)
         if not found:
             self.logger.warning(f'Pixelfarbe bei ({x},{y}) nicht innerhalb {timeout}s gefunden')
+            if self.on_action_event_callback:
+                self.on_action_event_callback('pixel_recognition', 'fail', f'({x},{y})')
+        else:
+            if self.on_action_event_callback:
+                self.on_action_event_callback('pixel_recognition', 'success', f'({x},{y})')
     
     def _action_click_at_color(self, action: Dict):
         """Findet erste Farbe in Region und klickt darauf."""
@@ -615,8 +639,12 @@ class MacroPlayer:
             self.variable_manager.set('color_click_x', match.x)
             self.variable_manager.set('color_click_y', match.y)
             self.logger.log_macro_action('click_at_color', f'Geklickt bei ({match.x}, {match.y})')
+            if self.on_action_event_callback:
+                self.on_action_event_callback('pixel_recognition', 'success', f'click_at_color ({match.x}, {match.y})')
         else:
             self.logger.warning('Farbe nicht gefunden')
+            if self.on_action_event_callback:
+                self.on_action_event_callback('pixel_recognition', 'fail', 'click_at_color')
     
     def _parse_region(self, region: Any) -> Optional[Tuple[int, int, int, int]]:
         """Konvertiert region zu (x, y, width, height) oder None."""

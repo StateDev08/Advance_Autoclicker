@@ -52,43 +52,39 @@ class PixelDetector:
                    region: Optional[Tuple[int, int, int, int]] = None,
                    tolerance: int = 10) -> Optional[PixelMatch]:
         """
-        Findet erstes Vorkommen einer Farbe
-        
-        Args:
-            target_color: Gesuchte Farbe (R, G, B)
-            region: Suchbereich (x, y, width, height) oder None für Vollbild
-            tolerance: Toleranz (0 = exakt, höher = mehr Abweichung erlaubt)
-            
-        Returns:
-            PixelMatch oder None
+        Findet erstes Vorkommen einer Farbe (Vektorisierte Version für Performance)
         """
         # Screenshot erstellen
         if region:
-            x, y, width, height = region
-            screenshot = ImageGrab.grab(bbox=(x, y, x + width, y + height))
-            offset_x, offset_y = x, y
+            x_reg, y_reg, width_reg, height_reg = region
+            screenshot = ImageGrab.grab(bbox=(x_reg, y_reg, x_reg + width_reg, y_reg + height_reg))
+            offset_x, offset_y = x_reg, y_reg
         else:
             screenshot = ImageGrab.grab()
             offset_x, offset_y = 0, 0
         
         # Zu numpy array konvertieren
-        img_array = np.array(screenshot)
-        height, width = img_array.shape[:2]
+        img_array = np.array(screenshot)[:, :, :3]  # Nur RGB
         
-        # Durch Pixel iterieren
-        for y in range(height):
-            for x in range(width):
-                pixel_color = tuple(img_array[y, x][:3])  # RGB
-                
-                distance = self.color_distance(pixel_color, target_color)
-                
-                if distance <= tolerance:
-                    return PixelMatch(
-                        x=x + offset_x,
-                        y=y + offset_y,
-                        color=pixel_color,
-                        distance=distance
-                    )
+        # Differenz berechnen (vektorisiert)
+        diff = img_array.astype(np.int32) - np.array(target_color, dtype=np.int32)
+        dist_sq = np.sum(diff**2, axis=2)
+        
+        # Maske für Treffer innerhalb der Toleranz
+        mask = dist_sq <= tolerance**2
+        
+        # Koordinaten der Treffer finden
+        coords = np.argwhere(mask)
+        
+        if coords.size > 0:
+            y, x = coords[0]
+            pixel_color = tuple(img_array[y, x])
+            return PixelMatch(
+                x=int(x) + offset_x,
+                y=int(y) + offset_y,
+                color=pixel_color,
+                distance=float(np.sqrt(dist_sq[y, x]))
+            )
         
         return None
     
@@ -120,52 +116,40 @@ class PixelDetector:
                        tolerance: int = 10,
                        max_results: int = 100) -> List[PixelMatch]:
         """
-        Findet alle Vorkommen einer Farbe
-        
-        Args:
-            target_color: Gesuchte Farbe (R, G, B)
-            region: Suchbereich oder None für Vollbild
-            tolerance: Toleranz
-            max_results: Maximale Anzahl Ergebnisse
-            
-        Returns:
-            Liste von PixelMatch
+        Findet alle Vorkommen einer Farbe (Vektorisierte Version)
         """
         # Screenshot erstellen
         if region:
-            x, y, width, height = region
-            screenshot = ImageGrab.grab(bbox=(x, y, x + width, y + height))
-            offset_x, offset_y = x, y
+            x_reg, y_reg, width_reg, height_reg = region
+            screenshot = ImageGrab.grab(bbox=(x_reg, y_reg, x_reg + width_reg, y_reg + height_reg))
+            offset_x, offset_y = x_reg, y_reg
         else:
             screenshot = ImageGrab.grab()
             offset_x, offset_y = 0, 0
         
         # Zu numpy array konvertieren
-        img_array = np.array(screenshot)
-        height, width = img_array.shape[:2]
+        img_array = np.array(screenshot)[:, :, :3]
+        
+        # Differenz berechnen (vektorisiert)
+        diff = img_array.astype(np.int32) - np.array(target_color, dtype=np.int32)
+        dist_sq = np.sum(diff**2, axis=2)
+        
+        # Maske für Treffer
+        mask = dist_sq <= tolerance**2
+        
+        # Koordinaten finden
+        coords = np.argwhere(mask)
         
         matches = []
-        
-        # Durch Pixel iterieren
-        for y in range(height):
-            for x in range(width):
-                if len(matches) >= max_results:
-                    break
-                
-                pixel_color = tuple(img_array[y, x][:3])  # RGB
-                
-                distance = self.color_distance(pixel_color, target_color)
-                
-                if distance <= tolerance:
-                    matches.append(PixelMatch(
-                        x=x + offset_x,
-                        y=y + offset_y,
-                        color=pixel_color,
-                        distance=distance
-                    ))
-            
-            if len(matches) >= max_results:
-                break
+        for i in range(min(len(coords), max_results)):
+            y, x = coords[i]
+            pixel_color = tuple(img_array[y, x])
+            matches.append(PixelMatch(
+                x=int(x) + offset_x,
+                y=int(y) + offset_y,
+                color=pixel_color,
+                distance=float(np.sqrt(dist_sq[y, x]))
+            ))
         
         return matches
     

@@ -26,9 +26,11 @@ class DatabaseManager:
         self.init_database()
     
     def get_connection(self):
-        """Erstellt eine neue Datenbankverbindung"""
-        conn = sqlite3.connect(self.db_path)
+        """Erstellt eine neue Datenbankverbindung (Thread-safe)"""
+        conn = sqlite3.connect(self.db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        # WAL-Modus für bessere Performance bei parallelen Zugriffen
+        conn.execute("PRAGMA journal_mode=WAL")
         return conn
     
     def init_database(self):
@@ -74,6 +76,10 @@ class DatabaseManager:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+            # Indizes für bessere Performance
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_macros_profile ON macros(profile_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_macros_name ON macros(name)")
             
             conn.commit()
     

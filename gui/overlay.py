@@ -5,22 +5,32 @@ Neu: Fortschrittsanzeige, Kompakt-Modus, Pin-Position, Click-through, Letzte Aus
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
-    QSlider, QProgressBar, QScrollArea, QSizePolicy)
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPoint, QRect
-from PyQt6.QtGui import QFont, QFontDatabase, QPaintEvent
+    QSlider, QProgressBar, QScrollArea, QSizePolicy, QMenu, QGraphicsDropShadowEffect)
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPoint, QRect, QPropertyAnimation, QEasingCurve
+from PyQt6.QtGui import QFont, QFontDatabase, QPaintEvent, QAction, QColor
 import time
+import os
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 
 class GamingOverlay(QWidget):
     """Transparentes Overlay: Makro-Status, Fortschritt, Quick-Actions, Kompakt-Modus, Pin, Click-through"""
 
-    toggle_visibility = pyqtSignal()
+    play_macro_requested = pyqtSignal(int)
     stop_all_requested = pyqtSignal()
     pause_requested = pyqtSignal()
     resume_requested = pyqtSignal()
+    video_record_requested = pyqtSignal(bool) # True = Start, False = Stop
+    add_macro_requested = pyqtSignal()
+    screenshot_requested = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, db_manager=None, parent=None):
         super().__init__(parent)
+        self.db = db_manager
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -61,207 +71,299 @@ class GamingOverlay(QWidget):
         self.status_bar_percent = None  # 0–100 oder None (aus)
         self.status_bar_color = "0,200,100"
         self.sound_on_end = False
+        self.is_video_recording = False
 
         self.init_ui()
         self.setup_timer()
 
     # Mindesthöhe, damit auf Displays mit großer Rahmenhöhe (z. B. TV) keine setGeometry-Warnung entsteht
     SAFE_MIN_HEIGHT = 360
+    SAFE_MAX_HEIGHT = 800
+    SAFE_MAX_WIDTH = 600
 
     def init_ui(self):
-        self.setMinimumSize(280, self.SAFE_MIN_HEIGHT)
-        self.setMaximumSize(480, 420)
-        self.resize(340, self.SAFE_MIN_HEIGHT)
+        self.setMinimumSize(280, 48)
+        self.setMaximumSize(self.SAFE_MAX_WIDTH, self.SAFE_MAX_HEIGHT)
+        self.resize(340, 520)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(10, 10, 10, 10) # Platz für Schatten
         layout.setSpacing(0)
 
         self.container = QFrame()
         self.container.setObjectName("overlayContainer")
         self.container.setCursor(Qt.CursorShape.ArrowCursor)
-        self.update_style()
+        
+        # Schatten-Effekt für mehr Tiefe
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 160))
+        shadow.setOffset(0, 4)
+        self.container.setGraphicsEffect(shadow)
+
+        self.container_layout = QVBoxLayout(self.container)
+        self.container_layout.setContentsMargins(0, 0, 0, 0)
+        self.container_layout.setSpacing(0)
+
+        # Header
+        header = self.create_header()
+        self.container_layout.addWidget(header)
+
+        # Scrollbare Area für Content (falls er zu groß wird)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setStyleSheet("background: transparent;")
 
         self.content = QWidget()
+        self.content.setObjectName("contentWidget")
         self.content_layout = QVBoxLayout(self.content)
-        self.content_layout.setContentsMargins(12, 10, 12, 10)
-        self.content_layout.setSpacing(8)
+        self.content_layout.setContentsMargins(15, 10, 15, 10)
+        self.content_layout.setSpacing(12)
 
-        self.sep1 = QFrame()
-        self.sep1.setFrameShape(QFrame.Shape.HLine)
-        self.sep1.setFixedHeight(1)
-        self.sep1.setStyleSheet("background-color: rgba(255,255,255,0.15);")
-        self.content_layout.addWidget(self.sep1)
+        # ---- Status Bereich ----
+        status_box = QFrame()
+        status_box.setObjectName("statusBox")
+        status_box_layout = QVBoxLayout(status_box)
+        status_box_layout.setContentsMargins(0, 0, 0, 0)
+        status_box_layout.setSpacing(0)
 
-        # ---- Status ----
-        self.status_label = QLabel("Bereit")
+        self.status_label = QLabel("BEREIT")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setObjectName("statusLabel")
-        f = QFont()
-        f.setPointSize(11)
-        f.setBold(True)
-        self.status_label.setFont(f)
-        self.content_layout.addWidget(self.status_label)
+        f_status = QFont()
+        f_status.setPointSize(12)
+        f_status.setBold(True)
+        f_status.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.5)
+        self.status_label.setFont(f_status)
+        status_box_layout.addWidget(self.status_label)
 
         self.macro_label = QLabel("Kein Makro aktiv")
         self.macro_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.macro_label.setObjectName("macroLabel")
         self.macro_label.setWordWrap(True)
-        self.content_layout.addWidget(self.macro_label)
+        status_box_layout.addWidget(self.macro_label)
+        
+        self.content_layout.addWidget(status_box)
 
-        # ---- Fortschritt (neu) ----
+        # Trenner
+        self.sep1 = QFrame()
+        self.sep1.setFrameShape(QFrame.Shape.HLine)
+        self.sep1.setFixedHeight(1)
+        self.sep1.setStyleSheet("background-color: rgba(137, 180, 250, 0.2);")
+        self.content_layout.addWidget(self.sep1)
+
+        # ---- Fortschritt & Statistik ----
         self.progress_widget = QFrame()
+        self.progress_widget.setObjectName("progressWidget")
         progress_layout = QVBoxLayout(self.progress_widget)
-        progress_layout.setContentsMargins(0, 4, 0, 4)
+        progress_layout.setContentsMargins(5, 5, 5, 5)
+        progress_layout.setSpacing(8)
+        
+        # Loop / Action Info in schönerer Darstellung
+        info_row = QHBoxLayout()
+        self.lbl_loop_action = QLabel("Loop 0 · Action 0")
+        self.lbl_loop_action.setStyleSheet("color: #fab387; font-size: 9pt; font-family: 'JetBrains Mono', monospace; font-weight: bold;")
+        info_row.addWidget(self.lbl_loop_action)
+        info_row.addStretch()
+        
+        self.timer_label = QLabel("00:00")
+        self.timer_label.setObjectName("timerLabel")
+        info_row.addWidget(self.timer_label)
+        progress_layout.addLayout(info_row)
+
         self.progress_bar = QProgressBar()
         self.progress_bar.setMinimum(0)
         self.progress_bar.setMaximum(100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFormat("%p%")
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid rgba(0,200,200,0.4);
-                border-radius: 4px;
-                text-align: center;
-                background: rgba(0,0,0,0.4);
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
-                    stop:0 #00cccc, stop:1 #0088aa);
-                border-radius: 3px;
-            }
-        """)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setFixedHeight(8)
         progress_layout.addWidget(self.progress_bar)
-        self.lbl_loop_action = QLabel("Loop 0, Aktion 0")
-        self.lbl_loop_action.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_loop_action.setStyleSheet("color: rgba(255,220,100,0.95); font-size: 9pt; font-family: monospace;")
-        progress_layout.addWidget(self.lbl_loop_action)
+        
         self.progress_widget.setVisible(False)
         self.content_layout.addWidget(self.progress_widget)
 
-        # ---- Timer + Letzte Ausführung (neu) ----
-        self.timer_label = QLabel("00:00")
-        self.timer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.timer_label.setObjectName("timerLabel")
-        self.content_layout.addWidget(self.timer_label)
+        # ---- Skill Rotation / Next Actions ----
+        self.rotation_container = QFrame()
+        self.rotation_container.setObjectName("rotationContainer")
+        rotation_layout = QVBoxLayout(self.rotation_container)
+        rotation_layout.setContentsMargins(8, 8, 8, 8)
+        
+        rot_title = QLabel("NÄCHSTE AKTIONEN")
+        rot_title.setStyleSheet("color: rgba(137, 180, 250, 0.6); font-size: 7pt; font-weight: bold; margin-bottom: 2px;")
+        rotation_layout.addWidget(rot_title)
 
-        self.last_run_label = QLabel("")
-        self.last_run_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.last_run_label.setStyleSheet("color: rgba(180,180,180,0.9); font-size: 8pt;")
-        self.last_run_label.setWordWrap(True)
-        self.content_layout.addWidget(self.last_run_label)
+        self.skill_rotation_label = QLabel("")
+        self.skill_rotation_label.setWordWrap(True)
+        self.skill_rotation_label.setStyleSheet("color: rgba(205, 214, 244, 0.9); font-size: 8.5pt;")
+        rotation_layout.addWidget(self.skill_rotation_label)
+        
+        self.rotation_container.setVisible(False)
+        self.content_layout.addWidget(self.rotation_container)
 
-        # ---- FPS + Ressourcen (dezent) ----
-        self.perf_label = QLabel("")
-        self.perf_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.perf_label.setStyleSheet("color: rgba(140,140,140,0.8); font-size: 7pt; font-family: monospace;")
-        self.content_layout.addWidget(self.perf_label)
+        # ---- Ressourcen & Stats (Modernized) ----
+        self.res_frame = QFrame()
+        res_layout = QHBoxLayout(self.res_frame)
+        res_layout.setContentsMargins(0, 0, 0, 0)
+        res_layout.setSpacing(10)
 
-        # ---- Letzter Log (neu) ----
-        self.mini_log_label = QLabel("")
-        self.mini_log_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.mini_log_label.setStyleSheet("color: rgba(0, 200, 255, 0.7); font-size: 7pt; font-style: italic;")
+        def create_res_item(label_text, color):
+            box = QVBoxLayout()
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet(f"color: {color}; font-size: 7pt; font-weight: bold;")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            val = QLabel("0%")
+            val.setStyleSheet("color: white; font-size: 8.5pt; font-family: 'JetBrains Mono', monospace;")
+            val.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            box.addWidget(lbl)
+            box.addWidget(val)
+            return box, val
+
+        self.cpu_box, self.lbl_cpu_val = create_res_item("CPU", "#f38ba8")
+        self.ram_box, self.lbl_ram_val = create_res_item("RAM", "#fab387")
+        self.fps_box, self.lbl_fps_val = create_res_item("FPS", "#a6e3a1")
+        
+        res_layout.addLayout(self.cpu_box)
+        res_layout.addLayout(self.ram_box)
+        res_layout.addLayout(self.fps_box)
+        
+        self.content_layout.addWidget(self.res_frame)
+
+        # ---- Session Quick Stats ----
+        self.stats_row = QHBoxLayout()
+        self.lbl_stats_ok = QLabel("✅ 0")
+        self.lbl_stats_err = QLabel("❌ 0")
+        self.lbl_stats_ok.setStyleSheet("color: #a6e3a1; font-size: 8.5pt; font-weight: bold;")
+        self.lbl_stats_err.setStyleSheet("color: #f38ba8; font-size: 8.5pt; font-weight: bold;")
+        self.stats_row.addStretch()
+        self.stats_row.addWidget(self.lbl_stats_ok)
+        self.stats_row.addWidget(self.lbl_stats_err)
+        self.stats_row.addStretch()
+        self.content_layout.addLayout(self.stats_row)
+
+        # ---- Mini Log & Action Feedback ----
+        self.mini_log_container = QFrame()
+        self.mini_log_container.setObjectName("logContainer")
+        log_layout = QVBoxLayout(self.mini_log_container)
+        log_layout.setContentsMargins(10, 8, 10, 8)
+        
+        self.mini_log_label = QLabel("System bereit")
         self.mini_log_label.setWordWrap(True)
-        self.mini_log_label.setMaximumHeight(30)
-        self.content_layout.addWidget(self.mini_log_label)
+        self.mini_log_label.setStyleSheet("color: #89dceb; font-size: 7.5pt; font-style: italic;")
+        log_layout.addWidget(self.mini_log_label)
+        self.content_layout.addWidget(self.mini_log_container)
 
-        # ---- Countdown (Cooldown/Skill) ----
+        # ---- Scheduler / Countdown Info ----
         self.countdown_label = QLabel("")
         self.countdown_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.countdown_label.setStyleSheet("color: rgba(255,200,100,0.95); font-size: 9pt;")
+        self.countdown_label.setStyleSheet("background: rgba(249, 226, 175, 0.1); color: #f9e2af; padding: 5px; border-radius: 5px; font-size: 8.5pt;")
         self.countdown_label.setVisible(False)
         self.content_layout.addWidget(self.countdown_label)
 
-        # ---- Skill-Rotation (nächste N Aktionen) ----
-        self.skill_rotation_label = QLabel("")
-        self.skill_rotation_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.skill_rotation_label.setStyleSheet("color: rgba(200,220,255,0.9); font-size: 8pt;")
-        self.skill_rotation_label.setWordWrap(True)
-        self.skill_rotation_label.setVisible(False)
-        self.content_layout.addWidget(self.skill_rotation_label)
-
-        # ---- Optionale farbige Status-Leiste (z. B. HP) ----
+        # ---- Status Bar (HP) ----
         self.status_bar_widget = QProgressBar()
         self.status_bar_widget.setFixedHeight(6)
-        self.status_bar_widget.setMinimum(0)
-        self.status_bar_widget.setMaximum(100)
-        self.status_bar_widget.setValue(100)
         self.status_bar_widget.setTextVisible(False)
-        self.status_bar_widget.setStyleSheet("""
-            QProgressBar { background: rgba(0,0,0,0.5); border-radius: 3px; }
-            QProgressBar::chunk { background: rgba(0,200,100,0.9); border-radius: 2px; }
-        """)
         self.status_bar_widget.setVisible(False)
         self.content_layout.addWidget(self.status_bar_widget)
 
-        # ---- Aktives Fenster ----
-        self.window_label = QLabel("Fenster: —")
-        self.window_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.window_label.setStyleSheet("color: rgba(160,160,160,0.85); font-size: 8pt;")
-        self.window_label.setWordWrap(True)
-        self.content_layout.addWidget(self.window_label)
-
+        # Trenner 2
         self.sep2 = QFrame()
         self.sep2.setFrameShape(QFrame.Shape.HLine)
         self.sep2.setFixedHeight(1)
-        self.sep2.setStyleSheet("background-color: rgba(255,255,255,0.15);")
+        self.sep2.setStyleSheet("background-color: rgba(137, 180, 250, 0.1);")
         self.content_layout.addWidget(self.sep2)
 
-        # ---- Quick-Actions ----
+        # ---- Quick-Actions & Options ----
         self.quick_frame = self.create_quick_buttons()
         self.content_layout.addWidget(self.quick_frame)
 
-        # ---- Optionen: Transparenz, Kompakt, Pin, Click-through ----
         self.options_frame = self.create_options()
         self.content_layout.addWidget(self.options_frame)
 
-        self.content_layout.addStretch()
-        layout.addWidget(self.container)
-        self.container_layout = QVBoxLayout(self.container)
-        self.container_layout.setContentsMargins(0, 0, 0, 0)
-        header = self.create_header()
-        self.container_layout.addWidget(header)
-        self.container_layout.addWidget(self.content)
+        # Footer mit Fenster-Info
+        self.window_label = QLabel("Fenster: —")
+        self.window_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.window_label.setStyleSheet("color: rgba(166, 173, 200, 0.5); font-size: 7.5pt;")
+        self.content_layout.addWidget(self.window_label)
 
-        self.apply_styles()
+        self.scroll_area.setWidget(self.content)
+        self.container_layout.addWidget(self.scroll_area)
+        
+        layout.addWidget(self.container)
+        self.update_style()
 
     def create_header(self):
         header = QFrame()
         header.setObjectName("overlayHeader")
         header.setCursor(Qt.CursorShape.SizeAllCursor)
-        header.setFixedHeight(36)
+        header.setFixedHeight(40)
         lay = QHBoxLayout(header)
-        lay.setContentsMargins(10, 6, 8, 6)
+        lay.setContentsMargins(12, 0, 12, 0)
         lay.setSpacing(8)
 
+        # Icon-Platzhalter (Emoji)
+        icon = QLabel("🎮")
+        icon.setStyleSheet("font-size: 14pt;")
+        lay.addWidget(icon)
+
         title = QLabel("Advanced Gaming")
-        title.setStyleSheet("color: rgba(0,255,255,0.95); font-weight: bold; font-size: 10pt;")
+        title.setStyleSheet("color: #89b4fa; font-weight: bold; font-size: 11pt;")
         lay.addWidget(title)
         lay.addStretch()
 
-        self.btn_compact = QPushButton("▸")
+        # Modernere Buttons im Header
+        button_style = """
+            QPushButton {
+                background-color: transparent;
+                color: #a6adc8;
+                border: none;
+                border-radius: 13px;
+                font-size: 12pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+                color: #cdd6f4;
+            }
+        """
+
+        self.btn_compact = QPushButton("󰅂") # Unicode Pfeil (Chevron) oder einfaches Zeichen
+        if self.btn_compact.font().family() != "Segoe UI Symbol":
+             self.btn_compact.setText("›")
         self.btn_compact.setFixedSize(26, 26)
         self.btn_compact.setToolTip("Kompakt-Modus")
+        self.btn_compact.setStyleSheet(button_style)
         self.btn_compact.clicked.connect(self.toggle_compact)
         lay.addWidget(self.btn_compact)
 
-        self.btn_minimal = QPushButton("M")
+        self.btn_minimal = QPushButton("󰈈")
+        if self.btn_minimal.font().family() != "Segoe UI Symbol":
+             self.btn_minimal.setText("M")
         self.btn_minimal.setFixedSize(26, 26)
         self.btn_minimal.setToolTip("Minimal (nur Status)")
         self.btn_minimal.setCheckable(True)
+        self.btn_minimal.setStyleSheet(button_style)
         self.btn_minimal.clicked.connect(self.toggle_minimal)
         lay.addWidget(self.btn_minimal)
 
-        btn_min = QPushButton("−")
+        btn_min = QPushButton("󰖰")
+        if btn_min.font().family() != "Segoe UI Symbol":
+             btn_min.setText("−")
         btn_min.setFixedSize(26, 26)
         btn_min.setToolTip("Minimieren")
+        btn_min.setStyleSheet(button_style)
         btn_min.clicked.connect(self.hide)
         lay.addWidget(btn_min)
 
-        btn_close = QPushButton("×")
+        btn_close = QPushButton("󰅙")
+        if btn_close.font().family() != "Segoe UI Symbol":
+             btn_close.setText("×")
         btn_close.setFixedSize(26, 26)
         btn_close.setToolTip("Schließen")
+        btn_close.setStyleSheet(button_style + "QPushButton:hover { background-color: #f38ba8; color: #11111b; }")
         btn_close.clicked.connect(self.hide)
         lay.addWidget(btn_close)
 
@@ -276,6 +378,12 @@ class GamingOverlay(QWidget):
         lay.setContentsMargins(0, 6, 0, 4)
         lay.setSpacing(8)
 
+        self.btn_play_pause = QPushButton("▶ PLAY")
+        self.btn_play_pause.setObjectName("playButton")
+        self.btn_play_pause.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_play_pause.clicked.connect(self._on_play_pause_clicked)
+        lay.addWidget(self.btn_play_pause)
+
         self.btn_pause = QPushButton("⏸ PAUSE")
         self.btn_pause.setObjectName("pauseButton")
         self.btn_pause.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -289,7 +397,74 @@ class GamingOverlay(QWidget):
         btn_stop.clicked.connect(self.stop_all_requested.emit)
         lay.addWidget(btn_stop)
 
+        self.btn_quick = QPushButton("⚡")
+        self.btn_quick.setFixedSize(32, 32)
+        self.btn_quick.setToolTip("Schnellstart (Makros)")
+        self.btn_quick.clicked.connect(self.show_quick_menu)
+        lay.addWidget(self.btn_quick)
+
+        self.btn_add_macro = QPushButton("➕")
+        self.btn_add_macro.setFixedSize(32, 32)
+        self.btn_add_macro.setToolTip("Makro hinzufügen")
+        self.btn_add_macro.clicked.connect(self.add_macro_requested.emit)
+        lay.addWidget(self.btn_add_macro)
+
+        self.btn_screenshot = QPushButton("📷")
+        self.btn_screenshot.setFixedSize(32, 32)
+        self.btn_screenshot.setToolTip("Screenshot aufnehmen")
+        self.btn_screenshot.clicked.connect(self.screenshot_requested.emit)
+        lay.addWidget(self.btn_screenshot)
+
+        self.btn_video = QPushButton("🎥")
+        self.btn_video.setFixedSize(32, 32)
+        self.btn_video.setToolTip("Videoaufnahme starten/stoppen")
+        self.btn_video.setCheckable(True)
+        self.btn_video.clicked.connect(self._on_video_clicked)
+        lay.addWidget(self.btn_video)
+
         return frame
+
+    def _on_video_clicked(self, checked):
+        self.video_record_requested.emit(checked)
+
+    def show_quick_menu(self):
+        """Zeigt ein Menü mit den letzten/favorisierten Makros."""
+        if not self.db:
+            return
+            
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu { background-color: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; }
+            QMenu::item:selected { background-color: #89b4fa; color: #11111b; }
+        """)
+        
+        # Makros aus DB laden (vereinfacht: alle aus aktuellem Profil oder Top 5)
+        try:
+            # Wir nehmen einfach die letzten 8 Makros
+            macros = self.db.get_macros()[:8]
+            if not macros:
+                menu.addAction("Keine Makros gefunden")
+            else:
+                for m in macros:
+                    action = QAction(f"▶ {m['name']}", self)
+                    action.triggered.connect(lambda checked, mid=m['id']: self.play_macro_requested.emit(mid))
+                    menu.addAction(action)
+        except Exception:
+            menu.addAction("Fehler beim Laden")
+            
+        menu.exec(self.btn_quick.mapToGlobal(QPoint(0, self.btn_quick.height())))
+
+    def _on_play_pause_clicked(self):
+        """Behandelt den Klick auf den Play/Start-Button."""
+        if self.current_macro:
+            # Falls ein Makro läuft, aber pausiert ist -> Weiter
+            if self.is_paused:
+                self.resume_requested.emit()
+        else:
+            # Falls kein Makro läuft -> Starte das letzte oder ein Standard-Makro
+            # In diesem Fall senden wir das Signal zum Abspielen ohne ID (oder -1),
+            # das MainWindow entscheidet dann, was zu tun ist.
+            self.play_macro_requested.emit(-1)
 
     def _on_pause_clicked(self):
         if self.is_paused:
@@ -301,13 +476,17 @@ class GamingOverlay(QWidget):
         self.is_paused = paused
         if paused:
             self.status_label.setText("Pausiert")
-            self.status_label.setStyleSheet("color: rgba(255, 200, 0, 0.95); padding: 4px; font-weight: bold;")
-            self.btn_pause.setText("▶ WEITER")
+            self.btn_play_pause.setText("▶ WEITER")
+            self.btn_play_pause.setVisible(True)
+            self.btn_pause.setVisible(False)
         else:
             if self.current_macro:
                 self.status_label.setText("Läuft")
-                self.status_label.setStyleSheet("color: rgba(0, 255, 150, 0.95); padding: 4px; font-weight: bold;")
-            self.btn_pause.setText("⏸ PAUSE")
+                self.btn_play_pause.setVisible(False)
+                self.btn_pause.setVisible(True)
+                self.btn_pause.setText("⏸ PAUSE")
+        # Style-Update für Farben (Gelb/Grün)
+        self.update_style()
 
     def create_options(self):
         frame = QFrame()
@@ -317,10 +496,14 @@ class GamingOverlay(QWidget):
 
         # Transparenz
         row1 = QHBoxLayout()
-        row1.addWidget(QLabel("Transparenz:"))
+        lbl_trans = QLabel("Tr:")
+        lbl_trans.setFixedWidth(20)
+        lbl_trans.setStyleSheet("font-size: 7pt;")
+        row1.addWidget(lbl_trans)
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.opacity_slider.setMinimum(40)
         self.opacity_slider.setMaximum(100)
+        self.opacity_slider.setFixedHeight(16)
         self.opacity_slider.setValue(int(self.opacity_level * 100))
         self.opacity_slider.valueChanged.connect(self.on_opacity_changed)
         row1.addWidget(self.opacity_slider)
@@ -328,18 +511,32 @@ class GamingOverlay(QWidget):
 
         # Pin + Click-through
         row2 = QHBoxLayout()
-        row2.addWidget(QLabel("Pin:"))
+        lbl_pin = QLabel("Pin:")
+        lbl_pin.setStyleSheet("font-size: 7pt;")
+        row2.addWidget(lbl_pin)
         self.pin_buttons = {}
         for corner, tip in [("tl", "Oben links"), ("tr", "Oben rechts"), ("bl", "Unten links"), ("br", "Unten rechts")]:
             btn = QPushButton(corner.upper())
-            btn.setFixedSize(28, 22)
+            btn.setFixedSize(26, 20)
+            btn.setStyleSheet("font-size: 7pt; padding: 0;")
             btn.setToolTip(tip)
             btn.setCheckable(True)
             btn.clicked.connect(lambda checked, c=corner: self.pin_to_corner(c))
             self.pin_buttons[corner] = btn
             row2.addWidget(btn)
         row2.addStretch()
+
+        self.btn_ontop = QPushButton("📌")
+        self.btn_ontop.setFixedSize(26, 20)
+        self.btn_ontop.setCheckable(True)
+        self.btn_ontop.setChecked(True)
+        self.btn_ontop.setToolTip("Immer im Vordergrund")
+        self.btn_ontop.clicked.connect(self.toggle_always_on_top)
+        row2.addWidget(self.btn_ontop)
+
         self.chk_click_through = QPushButton("Durchklicken")
+        self.chk_click_through.setFixedHeight(20)
+        self.chk_click_through.setStyleSheet("font-size: 7.5pt; padding: 0 4px;")
         self.chk_click_through.setCheckable(True)
         self.chk_click_through.setToolTip("Mausklicks durchlassen (zum Deaktivieren Overlay-Hotkey nutzen)")
         self.chk_click_through.clicked.connect(self.toggle_click_through)
@@ -349,58 +546,136 @@ class GamingOverlay(QWidget):
         return frame
 
     def apply_styles(self):
-        self.container.setStyleSheet(f"""
+        # Catppuccin Mocha Palette (für das Overlay leicht angepasst für Transparenz)
+        palette = {
+            "bg": f"rgba(30, 30, 46, {self.opacity_level})",
+            "surface": "rgba(49, 50, 68, 0.4)",
+            "accent": "rgba(137, 180, 250, 0.8)",  # Blue
+            "text": "rgba(205, 214, 244, 0.95)",
+            "subtext": "rgba(166, 173, 200, 0.8)",
+            "red": "rgba(243, 139, 168, 0.9)",
+            "green": "rgba(166, 227, 161, 0.9)",
+            "yellow": "rgba(249, 226, 175, 0.9)",
+            "border": "rgba(137, 180, 250, 0.25)",
+            "crust": "rgba(17, 17, 27, 0.6)",
+        }
+
+        # Statusfarben basierend auf Zustand
+        status_color = palette["accent"]
+        if self.is_paused:
+            status_color = palette["yellow"]
+        elif self.current_macro:
+            status_color = palette["green"]
+        elif getattr(self, "status_label", None) and self.status_label.text() == "AUFNAHME":
+            status_color = palette["red"]
+
+        # Globales Stylesheet für das gesamte Widget (vererbt Transparenz)
+        self.setStyleSheet(f"""
+            QWidget {{
+                background: transparent;
+                color: {palette["text"]};
+                font-family: 'Segoe UI', 'Inter', sans-serif;
+            }}
             #overlayContainer {{
-                background-color: rgba(18, 22, 28, {self.opacity_level});
-                border: 1px solid rgba(0, 220, 220, 0.35);
-                border-radius: 12px;
+                background-color: {palette["bg"]};
+                border: 1px solid {palette["border"]};
+                border-radius: 20px;
             }}
             #overlayHeader {{
-                background-color: rgba(0, 0, 0, 0.35);
-                border-radius: 10px 10px 0 0;
+                background-color: rgba(0, 0, 0, 0.25);
+                border-radius: 20px 20px 0 0;
             }}
-            #statusLabel {{ color: rgba(0, 255, 200, 0.95); padding: 4px; }}
-            #macroLabel {{ color: rgba(255, 255, 255, 0.9); font-size: 10pt; }}
-            #timerLabel {{ color: rgba(255, 200, 80, 0.95); font-size: 11pt; font-family: monospace; }}
-            #pauseButton {{
-                background-color: rgba(200, 150, 0, 0.85);
-                color: white;
-                border: 1px solid rgba(255, 220, 0, 0.6);
-                border-radius: 6px;
-                padding: 6px 12px;
+            #statusBox {{
+                background: transparent;
+            }}
+            #statusLabel {{ 
+                color: {status_color}; 
+                padding: 0;
+                margin-top: 4px;
+            }}
+            #macroLabel {{ 
+                color: {palette["subtext"]}; 
+                font-size: 9pt; 
+                margin-bottom: 4px;
+            }}
+            #progressWidget, #rotationContainer, #logContainer {{
+                background-color: {palette["surface"]};
+                border-radius: 12px;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+            }}
+            #timerLabel {{ 
+                color: {palette["yellow"]}; 
+                font-size: 9.5pt; 
+                font-family: 'JetBrains Mono', monospace; 
                 font-weight: bold;
-                font-size: 9pt;
             }}
-            #pauseButton:hover {{ background-color: rgba(220, 170, 0, 0.95); }}
-            #stopButton {{
-                background-color: rgba(200, 50, 50, 0.85);
-                color: white;
-                border: 1px solid rgba(255,80,80,0.6);
-                border-radius: 6px;
-                padding: 6px 12px;
-                font-weight: bold;
-                font-size: 9pt;
-            }}
-            #stopButton:hover {{ background-color: rgba(220, 60, 60, 0.95); }}
-            QPushButton {{
-                background-color: rgba(60, 70, 90, 0.8);
-                color: rgba(220, 220, 220, 0.95);
-                border: 1px solid rgba(255,255,255,0.2);
+            QProgressBar {{
+                border: none;
+                background: rgba(0, 0, 0, 0.2);
                 border-radius: 4px;
-                min-height: 20px;
             }}
-            QPushButton:hover {{ background-color: rgba(80, 90, 110, 0.9); }}
-            QPushButton:checked {{ background-color: rgba(0, 180, 200, 0.5); }}
+            QProgressBar::chunk {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {palette["accent"]}, stop:1 #b4befe);
+                border-radius: 4px;
+            }}
+            #pauseButton {{
+                background-color: {palette["yellow"]};
+                color: #11111b;
+                border: none;
+                border-radius: 10px;
+                padding: 6px 12px;
+                font-weight: bold;
+                font-size: 8.5pt;
+            }}
+            #pauseButton:hover {{ background-color: rgba(249, 226, 175, 1.0); }}
+            #stopButton {{
+                background-color: {palette["red"]};
+                color: #11111b;
+                border: none;
+                border-radius: 10px;
+                padding: 6px 12px;
+                font-weight: bold;
+                font-size: 8.5pt;
+            }}
+            #stopButton:hover {{ background-color: rgba(243, 139, 168, 1.0); }}
+            #playButton {{
+                background-color: #2ecc71;
+                color: #11111b;
+                border: none;
+                border-radius: 10px;
+                padding: 6px 12px;
+                font-weight: bold;
+                font-size: 8.5pt;
+            }}
+            #playButton:hover {{ background-color: rgba(46, 204, 113, 1.0); }}
+            QPushButton {{
+                background-color: {palette["surface"]};
+                color: {palette["text"]};
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                padding: 4px;
+            }}
+            QPushButton:hover {{ 
+                background-color: rgba(69, 71, 90, 0.7);
+                border-color: {palette["accent"]};
+            }}
+            QPushButton:checked {{ 
+                background-color: {palette["accent"]}; 
+                color: #11111b;
+                border: none;
+            }}
             QSlider::groove:horizontal {{
                 border: none;
-                height: 5px;
-                background: rgba(255,255,255,0.15);
+                height: 4px;
+                background: rgba(0, 0, 0, 0.3);
                 border-radius: 2px;
             }}
             QSlider::handle:horizontal {{
-                background: rgba(0, 220, 220, 0.9);
+                background: {palette["accent"]};
                 width: 14px;
-                margin: -4px 0;
+                height: 14px;
+                margin: -5px 0;
                 border-radius: 7px;
             }}
         """)
@@ -447,10 +722,11 @@ class GamingOverlay(QWidget):
         """Nächste N Aktionen/Skills für die Anzeige setzen (z. B. ['Skill 1', 'Skill 2', 'Skill 3'])."""
         self.skill_rotation_list = list(action_names)[:10]
         if self.skill_rotation_list:
-            self.skill_rotation_label.setText("Nächste: " + " → ".join(self.skill_rotation_list[:5]))
-            self.skill_rotation_label.setVisible(not self.is_minimal)
+            # Schönere Darstellung mit Pfeilen
+            self.skill_rotation_label.setText(" → ".join(self.skill_rotation_list[:4]))
+            self.rotation_container.setVisible(not self.is_minimal)
         else:
-            self.skill_rotation_label.setVisible(False)
+            self.rotation_container.setVisible(False)
 
     def set_status_bar(self, percent: float, color: str = "0,200,100"):
         """Optionale farbige Status-Leiste (0–100). Bei percent None ausblenden."""
@@ -475,6 +751,18 @@ class GamingOverlay(QWidget):
         """Zählt jede tatsächliche Bildaktualisierung für echte FPS."""
         self._fps_frame_count += 1
         super().paintEvent(event)
+
+    def set_session_stats(self, success: int, fail: int):
+        """Zeigt Session-Statistiken im Overlay an."""
+        self._session_stats = f" | ✅{success} ❌{fail}"
+
+    def set_next_schedule(self, text: str):
+        """Zeigt den nächsten geplanten Makro-Termin."""
+        if text:
+            self.countdown_label.setText(f"Nächster: {text}")
+            self.countdown_label.setVisible(True) # Immer sichtbar wenn Text da ist
+        else:
+            self.countdown_label.setVisible(False)
 
     def update_display(self):
         if self.macro_start_time is not None and not self.is_paused:
@@ -502,53 +790,69 @@ class GamingOverlay(QWidget):
             self.current_fps = self._fps_frame_count
             self._fps_frame_count = 0
             self._fps_last_time = t_perf
+            self.lbl_fps_val.setText(str(self.current_fps))
             
             # Ressourcen-Check (CPU/RAM) alle 2 Sekunden
             if t_perf - self._resource_timer >= 2.0:
                 self._resource_timer = t_perf
-                try:
-                    import os
-                    if hasattr(os, 'getloadavg'): # Linux/macOS
-                        self.current_cpu = int(os.getloadavg()[0] * 10) 
-                    else:
-                        # Windows Alternative: sehr einfach (nur Platzhalter oder echte API falls nötig)
-                        # Wir lassen es bei 0 oder nutzen eine einfache Methode falls psutil fehlt
+                if psutil:
+                    try:
+                        self.current_cpu = int(psutil.cpu_percent())
+                        self.current_ram = int(psutil.virtual_memory().percent)
+                    except Exception:
                         pass
-                except Exception:
-                    pass
+                else:
+                    # Fallback ohne psutil
+                    try:
+                        if hasattr(os, 'getloadavg'): # Linux/macOS
+                            self.current_cpu = int(os.getloadavg()[0] * 10)
+                    except Exception:
+                        pass
+                
+                self.lbl_cpu_val.setText(f"{self.current_cpu}%")
+                self.lbl_ram_val.setText(f"{self.current_ram}%")
 
-        perf_text = f"FPS: {self.current_fps}"
-        if self.current_cpu > 0:
-            perf_text += f" | CPU: {self.current_cpu}%"
-        self.perf_label.setText(perf_text if self.current_fps else "")
-        
         if self.isVisible():
             self.update()
 
+    def set_session_stats(self, success: int, fail: int):
+        """Zeigt Session-Statistiken im Overlay an."""
+        self.lbl_stats_ok.setText(f"✅ {success}")
+        self.lbl_stats_err.setText(f"❌ {fail}")
+
     def set_mini_log(self, message: str):
         """Zeigt eine kurze Nachricht (Log) im Overlay."""
-        self.mini_log_label.setText(message[:50] + ("..." if len(message) > 50 else ""))
-        QTimer.singleShot(3000, lambda: self.mini_log_label.setText("") if self.mini_log_label.text() == message[:50] else None)
+        clean_msg = str(message).strip()
+        # Falls es eine Erfolgs/Fehler-Nachricht ist, direkt flashen
+        if any(kw in clean_msg for kw in ["Erfolg", "Gefunden", "Success"]):
+            self.flash_success()
+        elif any(kw in clean_msg.lower() for kw in ["fehler", "nicht gefunden", "error", "fail"]):
+            self.flash_error()
+
+        self.mini_log_label.setText(clean_msg[:60] + ("..." if len(clean_msg) > 60 else ""))
+        # Reset nach 4 Sekunden
+        QTimer.singleShot(4000, lambda: self.mini_log_label.setText("") if self.mini_log_label.text() == (clean_msg[:60] + ("..." if len(clean_msg) > 60 else "")) else None)
 
     def set_macro_running(self, macro_name: str):
         self.current_macro = macro_name
         self.macro_start_time = time.time()
-        self.status_label.setText("Läuft")
-        self.status_label.setStyleSheet("color: rgba(0, 255, 150, 0.95); padding: 4px; font-weight: bold;")
+        self.status_label.setText("LÄUFT")
         self.macro_label.setText(macro_name)
         self.progress_bar.setValue(0)
-        self.lbl_loop_action.setText("Loop 0, Aktion 0")
+        self.lbl_loop_action.setText("Loop 0 · Action 0")
         self.progress_widget.setVisible(not self.is_minimal)
+        self.btn_play_pause.setVisible(False)
         self.btn_pause.setVisible(True)
         self.set_paused(False)
         self.set_mini_log(f"Starte: {macro_name}")
+        self.update_style()
 
     def set_playback_progress(self, progress: float, loop: int, action: int):
         self.playback_progress = progress
         self.playback_loop = loop
         self.playback_action = action
         self.progress_bar.setValue(int(progress))
-        self.lbl_loop_action.setText(f"Loop {loop}, Aktion {action}")
+        self.lbl_loop_action.setText(f"Loop {loop} · Action {action}")
         self.btn_pause.setVisible(True)
 
     def set_macro_stopped(self):
@@ -556,7 +860,7 @@ class GamingOverlay(QWidget):
             self.last_run_name = self.current_macro
             self.last_run_duration = time.time() - self.macro_start_time
             m, s = int(self.last_run_duration // 60), int(self.last_run_duration % 60)
-            self.last_run_label.setText(f"Letztes: {self.last_run_name} – {m:02d}:{s:02d}")
+            self.set_mini_log(f"Beendet: {self.current_macro} ({m:02d}:{s:02d})")
             if self.sound_on_end:
                 try:
                     import sys
@@ -567,25 +871,59 @@ class GamingOverlay(QWidget):
                     pass
         self.current_macro = None
         self.macro_start_time = None
-        self.status_label.setText("Bereit")
-        self.status_label.setStyleSheet("color: rgba(0, 255, 220, 0.95); padding: 4px; font-weight: bold;")
+        self.status_label.setText("BEREIT")
         self.macro_label.setText("Kein Makro aktiv")
         self.timer_label.setText("00:00")
         self.progress_widget.setVisible(False)
         self.progress_bar.setValue(0)
-        self.lbl_loop_action.setText("Loop 0, Aktion 0")
+        self.lbl_loop_action.setText("Loop 0 · Action 0")
+        self.btn_play_pause.setVisible(True)
+        self.btn_play_pause.setText("▶ PLAY")
         self.btn_pause.setVisible(False)
-        self.set_paused(False)
+        self.is_paused = False
+        self.update_style()
 
     def set_recording(self, is_recording: bool):
         if is_recording:
-            self.status_label.setText("Aufnahme")
-            self.status_label.setStyleSheet("color: rgba(255, 80, 80, 0.95); padding: 4px; font-weight: bold;")
+            self.status_label.setText("AUFNAHME")
             self.macro_label.setText("Makro wird aufgenommen…")
             self.macro_start_time = time.time()
             self.progress_widget.setVisible(False)
+            self.update_style()
         else:
             self.set_macro_stopped()
+
+    def set_video_recording(self, is_recording: bool):
+        """Aktualisiert den Status der Videoaufnahme im Overlay."""
+        self.is_video_recording = is_recording
+        if hasattr(self, 'btn_video'):
+            self.btn_video.setChecked(is_recording)
+            self.btn_video.setText("🔴" if is_recording else "🎥")
+            self.btn_video.setStyleSheet("background-color: rgba(243, 139, 168, 0.5);" if is_recording else "")
+        
+        if is_recording:
+            self.set_mini_log("Videoaufnahme läuft...")
+        else:
+            self.set_mini_log("Videoaufnahme beendet.")
+
+    def flash_success(self):
+        """Lässt das Overlay kurz grün aufleuchten."""
+        self._flash_color("#a6e3a1")
+
+    def flash_error(self):
+        """Lässt das Overlay kurz rot aufleuchten."""
+        self._flash_color("#f38ba8")
+
+    def _flash_color(self, color_hex: str):
+        """Interne Methode für den Flash-Effekt (Rahmen kurz einfärben)."""
+        original_border = "rgba(137, 180, 250, 0.25)"
+        current_style = self.styleSheet()
+        flash_style = current_style.replace(
+            f"border: 1px solid {original_border};",
+            f"border: 2px solid {color_hex};"
+        )
+        self.setStyleSheet(flash_style)
+        QTimer.singleShot(400, lambda: self.setStyleSheet(current_style))
 
     def on_opacity_changed(self, value: int):
         self.opacity_level = value / 100.0
@@ -594,29 +932,51 @@ class GamingOverlay(QWidget):
     def toggle_compact(self):
         if self.is_minimal:
             self.toggle_minimal()
+            
         self.is_compact = not self.is_compact
+        
+        # Animation für sanftes Auf/Zuklappen
+        self.anim = QPropertyAnimation(self, b"size")
+        self.anim.setDuration(300)
+        self.anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        
+        start_size = self.size()
         if self.is_compact:
-            self.content.setVisible(False)
-            self.setMaximumHeight(48)
-            self.resize(self.width(), 48)
+            self.scroll_area.setVisible(False)
+            end_size = QRect(0, 0, self.width(), 48).size()
         else:
-            self.setMaximumHeight(420)
-            self.resize(self.width(), self.SAFE_MIN_HEIGHT)
-            self.content.setVisible(True)
-            self._update_minimal_visibility()
+            end_size = QRect(0, 0, self.width(), 520).size()
+            # Verzögertes Anzeigen des Contents nach Animation
+            QTimer.singleShot(300, lambda: self.scroll_area.setVisible(True))
+            
+        self.anim.setStartValue(start_size)
+        self.anim.setEndValue(end_size)
+        self.anim.start()
+
         if hasattr(self, 'btn_compact'):
             self.btn_compact.setText("▾" if self.is_compact else "▸")
 
     def toggle_minimal(self):
-        """Minimal-Ansicht: nur Status, Makroname und Countdown."""
+        """Minimal-Ansicht: zeigt nur Status, Makroname, Fortschritt und Countdown."""
         self.is_minimal = not self.is_minimal
         if hasattr(self, 'btn_minimal'):
             self.btn_minimal.setChecked(self.is_minimal)
+            
+        # Animation für Breite
+        self.anim_w = QPropertyAnimation(self, b"size")
+        self.anim_w.setDuration(300)
+        self.anim_w.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        
+        start_size = self.size()
         if self.is_minimal:
-            self.setMaximumWidth(400)
-            self.resize(min(self.width(), 400), self.height())
+            end_size = QRect(0, 0, 280, self.height()).size()
         else:
-            self.setMaximumWidth(480)
+            end_size = QRect(0, 0, 340, self.height()).size()
+            
+        self.anim_w.setStartValue(start_size)
+        self.anim_w.setEndValue(end_size)
+        self.anim_w.start()
+        
         self._update_minimal_visibility()
 
     def _update_minimal_visibility(self):
@@ -624,17 +984,16 @@ class GamingOverlay(QWidget):
             return
         show = not self.is_minimal
         self.sep1.setVisible(show)
-        self.progress_widget.setVisible(show and self.current_macro is not None)
-        self.timer_label.setVisible(show)
-        self.last_run_label.setVisible(show)
-        self.perf_label.setVisible(show)
-        self.window_label.setVisible(show)
+        self.progress_widget.setVisible(self.current_macro is not None)
+        self.res_frame.setVisible(show)
+        self.stats_row.parent().findChildren(QLabel)[-1].setVisible(show) # Dummy für row
+        # Wir blenden gezielt Container aus
+        self.rotation_container.setVisible(len(self.skill_rotation_list) > 0 and show)
+        self.mini_log_container.setVisible(show)
         self.sep2.setVisible(show)
         self.quick_frame.setVisible(show)
         self.options_frame.setVisible(show)
-        self.countdown_label.setVisible(self.countdown_seconds > 0)
-        self.skill_rotation_label.setVisible(show and len(self.skill_rotation_list) > 0)
-        self.status_bar_widget.setVisible(show and self.status_bar_percent is not None)
+        self.window_label.setVisible(show)
 
     def pin_to_corner(self, corner: str):
         self.pinned_corner = corner if self.pinned_corner != corner else None
@@ -671,6 +1030,16 @@ class GamingOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         if hasattr(self, 'chk_click_through'):
             self.chk_click_through.setChecked(False)
+
+    def toggle_always_on_top(self):
+        """Schaltet 'Immer im Vordergrund' um."""
+        on_top = self.btn_ontop.isChecked()
+        if on_top:
+            self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        else:
+            self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+        # Fenster muss neu angezeigt werden, damit Flags greifen
+        self.show()
 
     def start_drag(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

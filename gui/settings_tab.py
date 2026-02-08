@@ -476,8 +476,9 @@ class SettingsTab(QWidget):
         btn_save_layout = QHBoxLayout()
         btn_save_layout.addStretch()
         self.btn_save = QPushButton("💾 Einstellungen speichern")
+        self.btn_save.setObjectName("btn_play") # Nutzt das grüne Design
         self.btn_save.clicked.connect(self.save_settings)
-        self.btn_save.setStyleSheet("QPushButton { font-size: 12pt; padding: 10px; }")
+        self.btn_save.setMinimumHeight(40)
         btn_save_layout.addWidget(self.btn_save)
         main_layout.addLayout(btn_save_layout)
     

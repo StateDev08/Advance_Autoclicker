@@ -29,24 +29,23 @@ Von einfachen Klicks zu hochkomplexen, zeitgesteuerten, bildbasierten Multi-Moni
 - ✅ Template-Sammlung erstellen
 - ✅ Makros mit Freunden teilen
 
-#### 🎨 **PIXEL-FARB-ERKENNUNG** - Color-Based Automation
-- ✅ Finde Pixel nach RGB-Farbe
-- ✅ Warte bis Pixel Farbe ändert
-- ✅ Klicke auf erste gefundene Farbe
-- ✅ Toleranz-System für Helligkeit
-- ✅ Perfekt für: Health-Bars, Status-LEDs, Buttons
+#### 🔔 **SYSTEM-TRAY & THEMES** - Individualisierung
+- ✅ **Modernes Theme-System**: 9 Designs (Dark, Light, Gaming, Nord, Sakura, Midnight...)
+- ✅ **System-Tray-Integration**: Läuft im Hintergrund mit Schnellstart-Menü
+- ✅ **Notifications**: Benachrichtigungen bei Makro-Start/Ende
 
-#### 🖥️ **MULTI-MONITOR-SUPPORT** - Für Streamer & Power-User
-- ✅ Automatische Monitor-Erkennung
-- ✅ Koordinaten-Konvertierung (absolut ↔ relativ)
-- ✅ Actions mit Monitor-ID
-- ✅ Perfekt für: Multi-Screen-Setups, Streaming, Trading
+#### 🎨 **PERFORMANCE & PRÄZISION** - Hochoptimiert
+- ✅ **Vektorisierte Pixel-Suche**: NumPy-beschleunigte Farberkennung (CPU-schonend)
+- ✅ **Anti-Erkennung**: Zufällige Klick-Offsets und menschliche Reaktionszeiten
+- ✅ **Multi-Monitor-Support**: Koordinaten-Konvertierung für komplexe Setups
 
-#### 🔔 **SYSTEM-TRAY-INTEGRATION** - Always Available
-- ✅ Minimiere zur Taskleiste
-- ✅ Schnellstart-Menü (bis zu 10 Makros)
-- ✅ Benachrichtigungen bei Makro-Start/Ende
-- ✅ Läuft im Hintergrund
+#### 🎮 **GAMING-OVERLAY 2.0** - Die Schaltzentrale im Spiel
+- ✅ **Glassmorphism Design**: Modernes, semi-transparentes UI (Catppuccin Mocha)
+- ✅ **Ressourcen-Monitor**: Echtzeit-Anzeige von FPS, CPU & RAM
+- ✅ **Quick-Actions**: Makros starten, Screenshots machen & Video-Aufnahme direkt aus dem Spiel
+- ✅ **Visuelles Feedback**: Automatisches Aufleuchten bei Erfolg (Grün) oder Fehlern (Rot)
+- ✅ **Skill-Rotation**: Vorschau der nächsten 5 geplanten Aktionen
+- ✅ **Kompakt- & Minimal-Modus**: Platzsparendes Design, das nur das Nötigste zeigt
 
 ---
 
@@ -156,10 +155,11 @@ random_int(1, 5)
 - ✅ Vollständig anpassbar
 - ✅ Auto-Save
 - ✅ Notifications
-- ✅ Gaming Overlay (Countdown, aktives Fenster, Minimal-Ansicht)
-- ✅ Anti-Erkennung (Klick-Offset, Zufalls-Delays)
-- ✅ Spiel-Vorlagen, Makro-Kette, Toggle-Makro
-- ✅ Minimize to Tray
+- ✅ Gaming Overlay (Echtzeit-Stats, Log, Skill-Rotation, Quick-Actions)
+- ✅ Anti-Erkennung (Klick-Offset, Zufalls-Delays, Human Mouse)
+- ✅ Screen-Recorder (Video-Aufnahme als AVI/MP4)
+- ✅ 9 verschiedene Themes (Nord, Sakura, Cyberpunk, etc.)
+- ✅ Minimize to Tray & Auto-Start
 
 ---
 
@@ -185,6 +185,8 @@ random_int(1, 5)
 | **click_at_health_color** | v3.0 | Klick auf erste Farbe aus Liste |
 | **cooldown_wait** | v3.0 | Zufällige Cooldown-Wartezeit |
 | **human_mouse_move** | v3.0 | Menschliche Mausbewegung (Schritte + Jitter) |
+| **set_status_bar** | v3.0 | Statusleiste (HP-Bar) im Overlay steuern |
+| **jump_to_action** | v3.0 | Sprung zu einer bestimmten Aktions-ID (Schleifen) |
 
 ---
 
@@ -193,13 +195,12 @@ random_int(1, 5)
 1. **Makros** - Makro-Verwaltung & Ausführung
 2. **Recorder** - Makro-Aufnahme
 3. **Profile** - Profile-Verwaltung
-4. **Templates** - Screenshot-Verwaltung *(v2.0)*
-5. **Log Viewer** - Live-Logs *(v2.0)*
-6. **Hotkeys** - Hotkey-Konfiguration
-7. **Einstellungen** - Programmeinstellungen
-8. **Overlay** - Gaming-Overlay-Einstellungen
-9. **Scheduler** - Zeitgesteuerte Ausführung *(v3.0)*
-10. **Statistiken** - Performance-Analytics *(v3.0)*
+4. **Scheduler** - Zeitgesteuerte Ausführung *(v3.0)*
+5. **Logs** - Live-Logs *(v2.0)*
+6. **Statistiken** - Performance-Analytics *(v3.0)*
+7. **Templates** - Screenshot-Verwaltung *(v2.0)*
+8. **Tools** - Video-Aufnahme & Bildschirm-Tools *(v3.0)*
+9. **Einstellungen** - Programmeinstellungen
 
 ---
 
@@ -215,6 +216,7 @@ PyQt6 >= 6.6.0
 opencv-python >= 4.8.0
 numpy >= 1.24.0
 Pillow >= 10.0.0
+psutil >= 5.9.0
 pywin32 >= 306
 ```
 

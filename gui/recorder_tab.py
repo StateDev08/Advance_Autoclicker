@@ -70,11 +70,13 @@ class RecorderTab(QWidget):
         btn_layout = QHBoxLayout()
         
         self.btn_start = QPushButton("🎙️ Aufnahme starten")
+        self.btn_start.setObjectName("btn_record")
         self.btn_start.clicked.connect(self.start_recording)
         self.btn_start.setStyleSheet("QPushButton { font-size: 14pt; padding: 10px; }")
         btn_layout.addWidget(self.btn_start)
         
         self.btn_stop = QPushButton("⏹️ Aufnahme stoppen")
+        self.btn_stop.setObjectName("btn_stop")
         self.btn_stop.clicked.connect(self.stop_recording)
         self.btn_stop.setEnabled(False)
         self.btn_stop.setStyleSheet("QPushButton { font-size: 14pt; padding: 10px; }")
@@ -85,12 +87,12 @@ class RecorderTab(QWidget):
         # Status
         self.lbl_status = QLabel("Bereit zum Aufnehmen")
         self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_status.setStyleSheet("QLabel { font-size: 12pt; font-weight: bold; }")
+        self.lbl_status.setStyleSheet("QLabel { font-size: 14pt; font-weight: bold; color: palette(accent); }")
         control_layout.addWidget(self.lbl_status)
         
         self.lbl_timer = QLabel("00:00")
         self.lbl_timer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_timer.setStyleSheet("QLabel { font-size: 16pt; color: red; }")
+        self.lbl_timer.setStyleSheet("QLabel { font-size: 24pt; color: #e74c3c; font-weight: bold; }")
         self.lbl_timer.setVisible(False)
         control_layout.addWidget(self.lbl_timer)
         

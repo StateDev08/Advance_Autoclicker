@@ -61,10 +61,14 @@ class MainWindow(QMainWindow):
         self.settings_tab = SettingsTab(self.db, self.hotkey_manager)
         
         # Gaming-Overlay (nach Tabs initialisieren, da Verbindungen zu macro_tab bestehen)
-        self.overlay = GamingOverlay()
+        self.overlay = GamingOverlay(self.db)
         self.overlay.stop_all_requested.connect(self.emergency_stop)
         self.overlay.pause_requested.connect(self.macro_tab.player.pause)
         self.overlay.resume_requested.connect(self.macro_tab.player.resume)
+        self.overlay.play_macro_requested.connect(self.on_hotkey_play_start)
+        self.overlay.video_record_requested.connect(self.toggle_video_recording)
+        self.overlay.add_macro_requested.connect(self.add_macro_from_overlay)
+        self.overlay.screenshot_requested.connect(self.take_screenshot)
         
         # System Tray
         self.system_tray = SystemTrayManager(self)
@@ -96,6 +100,11 @@ class MainWindow(QMainWindow):
         self.window_detector.start_monitoring(
             on_window_change=self.on_window_changed
         )
+        
+        # Periodischer Update für Overlay-Scheduler-Info
+        self.scheduler_update_timer = QTimer(self)
+        self.scheduler_update_timer.timeout.connect(self._update_overlay_scheduler_info)
+        self.scheduler_update_timer.start(30000) # Alle 30 Sekunden
     
     def init_ui(self):
         """Initialisiert die Benutzeroberfläche"""
@@ -130,6 +139,9 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.tools_tab, "🔧 Tools")
         self.tabs.addTab(self.settings_tab, "⚙️ Einstellungen")
         
+        # UI Modernisierung: Icons vergrößern und Abstände anpassen
+        self.tabs.setIconSize(self.tabs.iconSize() * 1.2)
+        
         layout.addWidget(self.tabs)
         
         # Toolbar erstellen (nach den Tabs!)
@@ -147,6 +159,7 @@ class MainWindow(QMainWindow):
         self.macro_tab.playback_stopped.connect(self.on_playback_stopped)
         self.macro_tab.playback_progress.connect(self.overlay.set_playback_progress)
         self.macro_tab.player.on_complete_callback = self.overlay.set_macro_stopped
+        self.macro_tab.player.on_action_event_callback = self._on_player_action_event
         
         # Log-Weiterleitung an Overlay
         self.log_manager.signal_handler.log_message.connect(self._on_log_message_for_overlay)
@@ -164,17 +177,29 @@ class MainWindow(QMainWindow):
     
     def create_toolbar(self):
         """Erstellt die Toolbar"""
-        toolbar = QToolBar()
+        toolbar = QToolBar("Main Toolbar")
         toolbar.setMovable(False)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        toolbar.setIconSize(self.tabs.iconSize()) # Standardgröße
         self.addToolBar(toolbar)
         
+        # Spacer für Zentrierung oder Abstände
+        def add_spacer():
+            spacer = QWidget()
+            spacer.setFixedWidth(10)
+            toolbar.addWidget(spacer)
+
+        add_spacer()
+
         # Neues Profil
         new_profile_action = QAction("📁 Neues Profil", self)
         new_profile_action.setShortcut(QKeySequence("Ctrl+N"))
         new_profile_action.triggered.connect(self.profile_tab.create_profile)
         toolbar.addAction(new_profile_action)
         
+        add_spacer()
         toolbar.addSeparator()
+        add_spacer()
         
         # Neues Makro
         new_macro_action = QAction("⚡ Neues Makro", self)
@@ -182,52 +207,60 @@ class MainWindow(QMainWindow):
         new_macro_action.triggered.connect(self.macro_tab.create_macro)
         toolbar.addAction(new_macro_action)
         
+        add_spacer()
+        
         # Aufnahme starten
         record_action = QAction("🎙️ Aufnahme", self)
         record_action.setShortcut(QKeySequence("Ctrl+R"))
         record_action.triggered.connect(lambda: self.tabs.setCurrentWidget(self.recorder_tab))
         toolbar.addAction(record_action)
         
+        add_spacer()
         toolbar.addSeparator()
-        
-        # Einstellungen
-        settings_action = QAction("⚙️ Einstellungen", self)
-        settings_action.setShortcut(QKeySequence("Ctrl+,"))
-        settings_action.triggered.connect(lambda: self.tabs.setCurrentWidget(self.settings_tab))
-        toolbar.addAction(settings_action)
-        
-        toolbar.addSeparator()
+        add_spacer()
         
         # Screenshot
         screenshot_action = QAction("📷 Screenshot", self)
         screenshot_action.setToolTip("Vollbild-Screenshot speichern")
         screenshot_action.triggered.connect(self.take_screenshot)
         toolbar.addAction(screenshot_action)
-        
-        toolbar.addSeparator()
+
+        # Flexibler Spacer um Einstellungen nach rechts zu schieben
+        right_spacer = QWidget()
+        from PyQt6.QtWidgets import QSizePolicy
+        right_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(right_spacer)
         
         # Gaming-Overlay
         overlay_action = QAction("🎮 Overlay", self)
+        overlay_action.setToolTip("Overlay an/aus")
         overlay_action.setShortcut(QKeySequence("Ctrl+Shift+O"))
         overlay_action.triggered.connect(self.toggle_overlay)
         toolbar.addAction(overlay_action)
-        
+
+        add_spacer()
+
         # Hotkeys anzeigen
         hotkeys_action = QAction("⌨️ Hotkeys", self)
         hotkeys_action.triggered.connect(self.show_hotkeys)
         toolbar.addAction(hotkeys_action)
-        
-        # Über
-        about_action = QAction("ℹ️ Über", self)
-        about_action.triggered.connect(self.show_about)
-        toolbar.addAction(about_action)
 
-        toolbar.addSeparator()
+        add_spacer()
 
         # Update prüfen / herunterladen
         update_action = QAction("🔄 Update", self)
         update_action.triggered.connect(self.check_for_update)
         toolbar.addAction(update_action)
+
+        add_spacer()
+
+        # Einstellungen
+        settings_action = QAction("⚙️ Einstellungen", self)
+        settings_action.setShortcut(QKeySequence("Ctrl+,"))
+        settings_action.triggered.connect(lambda: self.tabs.setCurrentWidget(self.settings_tab))
+        toolbar.addAction(settings_action)
+        
+        add_spacer()
     
     def setup_statusbar(self):
         """Richtet die Statusleiste ein"""
@@ -285,6 +318,30 @@ class MainWindow(QMainWindow):
             clean_msg = msg.split('|')[-1].strip() if '|' in msg else msg
             self.overlay.set_mini_log(clean_msg)
 
+    def _on_player_action_event(self, event_type: str, status: str, details: Any):
+        """Behandelt Ereignisse vom MacroPlayer für visuelles Feedback."""
+        if event_type in ('image_recognition', 'pixel_recognition'):
+            if status == 'success':
+                self.overlay.flash_success()
+                self._session_success_count = getattr(self, "_session_success_count", 0) + 1
+            elif status == 'fail':
+                self.overlay.flash_error()
+                self._session_fail_count = getattr(self, "_session_fail_count", 0) + 1
+            
+            # Statistik im Overlay aktualisieren
+            self.overlay.set_session_stats(
+                getattr(self, "_session_success_count", 0),
+                getattr(self, "_session_fail_count", 0)
+            )
+        elif event_type == 'skill_rotation' and status == 'update':
+            self.overlay.set_skill_rotation(details)
+        elif event_type == 'status_bar' and status == 'update':
+            # details erwartet hier (percent, color_str)
+            if isinstance(details, (list, tuple)) and len(details) >= 2:
+                self.overlay.set_status_bar(details[0], details[1])
+            else:
+                self.overlay.set_status_bar(details)
+
     def _write_obs_status(self, text: str):
         """Schreibt Status-Text in OBS-Status-Datei (für OBS „Text from file“)."""
         path = self.db.get_setting('obs_status_file', '').strip()
@@ -299,7 +356,29 @@ class MainWindow(QMainWindow):
         """Wird aufgerufen, wenn Makro-Wiedergabe startet"""
         self.overlay.set_macro_running(macro_name)
         self._write_obs_status("Läuft: " + macro_name)
+        
+        # Scheduler-Info im Overlay aktualisieren
+        self._update_overlay_scheduler_info()
     
+    def _update_overlay_scheduler_info(self):
+        """Sendet Info über das nächste geplante Makro an das Overlay."""
+        next_macro = self.scheduler_tab.scheduler.get_next_scheduled_macro()
+        if next_macro:
+            name = next_macro.macro_name
+            next_run = next_macro.next_run
+            import datetime
+            now = datetime.datetime.now()
+            diff = next_run - now
+            
+            # Formatieren
+            if diff.total_seconds() < 3600:
+                time_str = f"{int(max(0, diff.total_seconds()) // 60)}m"
+            else:
+                time_str = next_run.strftime("%H:%M")
+            self.overlay.set_next_schedule(f"{name} ({time_str})")
+        else:
+            self.overlay.set_next_schedule("")
+
     def load_settings(self):
         """Lädt gespeicherte Einstellungen"""
         # Fensterposition und -größe laden
@@ -394,20 +473,46 @@ class MainWindow(QMainWindow):
     
     def start_video_recording(self):
         """Startet Bildschirm-Video (Hotkey oder von außen)."""
-        self.tools_tab.start_video()
+        if hasattr(self, 'tools_tab'):
+            self.tools_tab.start_video()
+            if hasattr(self, 'overlay'):
+                self.overlay.set_video_recording(True)
     
     def stop_video_recording(self):
         """Stoppt Bildschirm-Video."""
-        self.tools_tab.stop_video()
+        if hasattr(self, 'tools_tab'):
+            self.tools_tab.stop_video()
+            if hasattr(self, 'overlay'):
+                self.overlay.set_video_recording(False)
+
+    def toggle_video_recording(self, start: bool):
+        """Umschalten der Videoaufnahme vom Overlay aus"""
+        if start:
+            self.start_video_recording()
+        else:
+            self.stop_video_recording()
+
+    def add_macro_from_overlay(self):
+        """Öffnet den Dialog zum Erstellen eines neuen Makros (vom Overlay aus)"""
+        self.show_from_tray()
+        self.tabs.setCurrentWidget(self.macro_tab)
+        self.macro_tab.create_macro()
     
     def take_screenshot(self):
         """Vollbild-Screenshot speichern (Toolbar oder Hotkey)."""
         save_dir = get_screenshot_folder(self.db.get_setting('screenshot_folder', ''))
         path = capture_fullscreen(save_dir)
         if path:
-            self.statusbar.showMessage(f"Screenshot gespeichert: {path}", 5000)
+            msg = f"Screenshot gespeichert: {path.name}"
+            self.statusbar.showMessage(msg, 5000)
+            if hasattr(self, 'overlay'):
+                self.overlay.set_mini_log("📸 Screenshot gespeichert")
+            if self.db.get_setting('show_notifications', 'true') == 'true':
+                self.system_tray.show_message("Screenshot", msg)
         else:
             self.statusbar.showMessage("Screenshot fehlgeschlagen.", 3000)
+            if hasattr(self, 'overlay'):
+                self.overlay.set_mini_log("❌ Screenshot Fehler")
     
     def start_macro_chain(self):
         """Startet die konfigurierte Makro-Kette (Hotkey)."""
@@ -531,12 +636,16 @@ class MainWindow(QMainWindow):
         if self.recorder_tab.is_recording:
             self.recorder_tab.stop_recording()
 
-    def on_hotkey_play_start(self):
-        """Hotkey-Callback: Wiedergabe starten"""
+    def on_hotkey_play_start(self, macro_id: int = -1):
+        """Hotkey-Callback oder Overlay-Request: Wiedergabe starten. 
+        Falls macro_id -1 ist, wird das aktuell ausgewählte Makro gestartet."""
         # Nur starten, wenn aktuell keine Wiedergabe läuft
         if not self.macro_tab.player.is_playing:
-            self.tabs.setCurrentWidget(self.macro_tab)
-            self.macro_tab.play_macro()
+            if macro_id != -1:
+                self.macro_tab.play_macro_by_id(macro_id)
+            else:
+                self.tabs.setCurrentWidget(self.macro_tab)
+                self.macro_tab.play_macro()
         
     def on_hotkey_play_stop(self):
         """Hotkey-Callback: Wiedergabe stoppen"""

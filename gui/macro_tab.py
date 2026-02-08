@@ -98,10 +98,12 @@ class MacroTab(QWidget):
         
         self.lbl_name = QLabel("<i>Kein Makro ausgewählt</i>")
         self.lbl_name.setWordWrap(True)
+        self.lbl_name.setStyleSheet("font-size: 14pt; color: palette(accent); font-weight: bold;")
         details_layout.addWidget(self.lbl_name)
         
         self.lbl_info = QLabel("")
         self.lbl_info.setWordWrap(True)
+        self.lbl_info.setStyleSheet("color: palette(text); font-size: 10pt;")
         details_layout.addWidget(self.lbl_info)
         
         details_group.setLayout(details_layout)
@@ -122,11 +124,13 @@ class MacroTab(QWidget):
         btn_control_layout = QHBoxLayout()
         
         self.btn_play = QPushButton("▶️ Abspielen")
+        self.btn_play.setObjectName("btn_play")
         self.btn_play.clicked.connect(self.play_macro)
         self.btn_play.setEnabled(False)
         btn_control_layout.addWidget(self.btn_play)
         
         self.btn_stop = QPushButton("⏹️ Stoppen")
+        self.btn_stop.setObjectName("btn_stop")
         self.btn_stop.clicked.connect(self.stop_macro)
         self.btn_stop.setEnabled(False)
         btn_control_layout.addWidget(self.btn_stop)
