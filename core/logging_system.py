@@ -1,5 +1,5 @@
 """
-Professionelles Logging-System für Advanced Auto Clicker
+Professionelles Logging-System für Advanced Gaming
 Strukturiertes Logging mit Levels, Rotation und GUI-Integration
 """
 
@@ -14,10 +14,13 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 class LogSignalHandler(logging.Handler, QObject):
     """Custom Handler der Log-Messages als Qt-Signale emittiert"""
-    
+
+    # Verhindert RuntimeError in logging.shutdown(), wenn das Qt-Objekt bereits zerstört ist
+    flushOnClose = True
+
     # Signal für neue Log-Nachrichten (level, message)
     log_message = pyqtSignal(str, str)
-    
+
     def __init__(self):
         logging.Handler.__init__(self)
         QObject.__init__(self)
@@ -72,7 +75,7 @@ class LogManager:
         # Haupt-Logger
         self.main_logger = self._create_logger(
             name="main",
-            filename="autoclicker.log",
+            filename="advanced_gaming.log",
             level=logging.INFO
         )
         
@@ -206,6 +209,30 @@ class LogManager:
     def get_signal_handler(self) -> LogSignalHandler:
         """Gibt den Signal-Handler für GUI-Integration zurück"""
         return self.signal_handler
+
+    def remove_signal_handler_from_loggers(self):
+        """Entfernt den Signal-Handler aus allen Loggern (vor App-Exit, um atexit RuntimeError zu vermeiden)."""
+        try:
+            signal_handler_ref = self.signal_handler
+        except RuntimeError:
+            return  # Qt-Objekt bereits zerstört, nichts zu tun
+        for name in ("main", "macro", "error", "performance"):
+            try:
+                logger = logging.getLogger(name)
+                handlers = getattr(logger, "handlers", [])[:]
+                for h in handlers:
+                    try:
+                        if h is signal_handler_ref:
+                            logger.removeHandler(h)
+                            break
+                    except RuntimeError:
+                        try:
+                            logger.removeHandler(h)
+                        except Exception:
+                            pass
+                        break
+            except Exception:
+                pass
     
     def set_level(self, logger_name: str, level: int):
         """Setzt Log-Level für einen Logger"""

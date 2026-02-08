@@ -1,6 +1,6 @@
 # Update & Auto-Update einrichten
 
-Dieses Dokument beschreibt, wie du das Update-System des **Advanced Auto Clicker** einrichtest und verwendest.
+Dieses Dokument beschreibt, wie du das Update-System von **Advanced Gaming** einrichtest und verwendest.
 
 ## 1. Version im Code pflegen
 
@@ -29,7 +29,7 @@ Zum Erstellen der ausführbaren Datei wird PyInstaller verwendet.
    ```bash
    python build_exe.py
    ```
-3. Nach erfolgreichem Build liegt die EXE in `dist/AdvancedAutoClicker.exe`.
+3. Nach erfolgreichem Build liegt die EXE in `dist/AdvancedGaming.exe`.
 
 ### Variante B: `build.bat` nutzen
 
@@ -39,15 +39,19 @@ Alternativ kannst du das mitgelieferte `build.bat` verwenden (falls entsprechend
 
 Die Anwendung erwartet die aktuelle Version immer unter dieser URL:
 
-`https://drenor.de/programme/autoclicker/AdvancedAutoClicker.exe`
+`https://drenor.de/programme/advanced_gaming/AdvancedGaming.exe`
 
 Für ein neues Release:
 
-1. Die frisch gebaute `dist/AdvancedAutoClicker.exe` lokal testen.
+1. Die frisch gebaute `dist/AdvancedGaming.exe` lokal testen.
 2. Die geprüfte EXE auf den Webserver an genau diese Stelle hochladen und die alte Datei ersetzen.
 3. (Optional) Vorher ein Backup der alten EXE machen.
 
-Es sind keine zusätzlichen Dateien (z.B. `version.txt`) erforderlich – das Update lädt immer die EXE von dieser festen URL.
+**Versionsprüfung (empfohlen):** Lege auf dem Server eine Datei `version.json` im gleichen Ordner ab, z.B. Inhalt:
+```json
+{"version": "3.0.0", "url": "https://drenor.de/programme/advanced_gaming/AdvancedGaming.exe"}
+```
+Die App prüft beim Klick auf „Update“, ob eine neuere Version existiert; nur dann wird „Update verfügbar“ angezeigt. Ohne `version.json` kann der Nutzer trotzdem „Trotzdem herunterladen“ wählen.
 
 ## 4. Update-Funktion in der Anwendung
 
@@ -59,7 +63,7 @@ In der Toolbar des Hauptfensters gibt es den Button **"🔄 Update"**.
   1. Die App öffnet einen **Speicher-Dialog**.
   2. Standard-Vorschlag (bei EXE-Betrieb):
      - Gleicher Ordner wie die aktuell laufende EXE.
-     - Dateiname `AdvancedAutoClicker_Update.exe` (oder dein aktueller Name + `_Update.exe`).
+     - Dateiname `AdvancedGaming_Update.exe` (oder dein aktueller Name + `_Update.exe`).
   3. Die EXE wird von der oben genannten URL heruntergeladen.
 
 - Im **Entwicklungsmodus** (`python main.py`):
@@ -75,7 +79,7 @@ Die automatische Selbst-Aktualisierung funktioniert nur, wenn:
 
 Dann passiert Folgendes:
 
-1. Nach dem Download erzeugt die App im Programmordner ein Skript `autoclicker_updater.bat`.
+1. Nach dem Download erzeugt die App im Programmordner ein Skript `advanced_gaming_updater.bat`.
 2. Du wirst gefragt, ob das Update jetzt angewendet werden soll.
 3. Bei **Ja**:
    - Die App startet das Batch-Skript.
@@ -94,7 +98,7 @@ Wenn du die neue EXE in einen **anderen Ordner** speicherst, wird kein Auto-Upda
 3. EXE mit `build_exe.py` (oder `build.bat`) neu bauen.
 4. Die neue EXE lokal kurz testen (Start, Aufnahme, Wiedergabe, Update-Button, etc.).
 5. Die getestete EXE auf den Server unter
-   `https://drenor.de/programme/autoclicker/AdvancedAutoClicker.exe`
+   `https://drenor.de/programme/advanced_gaming/AdvancedGaming.exe`
    hochladen und die alte Datei ersetzen.
 6. Fertig – Nutzer können nun über den **"🔄 Update"**-Button in der App auf die neue Version aktualisieren.
 

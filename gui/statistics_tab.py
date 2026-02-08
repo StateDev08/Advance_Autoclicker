@@ -4,7 +4,8 @@ Statistiken-Tab für Makro-Analytics
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QTableWidget, QTableWidgetItem, QLabel, QComboBox,
-                             QGroupBox, QHeaderView, QMessageBox)
+                             QGroupBox, QHeaderView, QMessageBox, QScrollArea, QFrame,
+                             QTabWidget)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor
 from core.statistics import StatisticsManager
@@ -27,55 +28,57 @@ class StatisticsTab(QWidget):
     
     def setup_ui(self):
         """Erstellt das UI"""
-        layout = QVBoxLayout(self)
-        
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+
+        # Tab-Widget für Unterkategorien
+        self.sub_tabs = QTabWidget()
+        main_layout.addWidget(self.sub_tabs)
+
+        # --- Tab 1: Übersicht & Makro-Stats ---
+        overview_tab = QWidget()
+        overview_tab_layout = QVBoxLayout(overview_tab)
+
+        scroll_ov = QScrollArea()
+        scroll_ov.setWidgetResizable(True)
+        scroll_ov.setFrameShape(QFrame.Shape.NoFrame)
+        ov_container = QWidget()
+        ov_vbox = QVBoxLayout(ov_container)
+
         # Gesamt-Statistiken
         overview_group = QGroupBox("Gesamt-Übersicht")
         overview_layout = QHBoxLayout()
-        
         self.lbl_total_executions = QLabel("Ausführungen: 0")
         overview_layout.addWidget(self.lbl_total_executions)
-        
         self.lbl_success_rate = QLabel("Erfolgsrate: 0%")
         overview_layout.addWidget(self.lbl_success_rate)
-        
         self.lbl_total_time = QLabel("Gesamt-Zeit: 0s")
         overview_layout.addWidget(self.lbl_total_time)
-        
         self.lbl_today = QLabel("Heute: 0")
         overview_layout.addWidget(self.lbl_today)
-        
         overview_layout.addStretch()
-        
         overview_group.setLayout(overview_layout)
-        layout.addWidget(overview_group)
-        
+        ov_vbox.addWidget(overview_group)
+
         # Toolbar
         toolbar = QHBoxLayout()
-        
         toolbar.addWidget(QLabel("Filter:"))
-        
         self.cmb_filter = QComboBox()
         self.cmb_filter.addItems(["Alle Makros", "Nach Ausführungen", "Nach Erfolgsrate"])
         self.cmb_filter.currentIndexChanged.connect(self.refresh_statistics)
         toolbar.addWidget(self.cmb_filter)
-        
         toolbar.addStretch()
-        
         btn_refresh = QPushButton("🔄 Aktualisieren")
         btn_refresh.clicked.connect(self.refresh_statistics)
         toolbar.addWidget(btn_refresh)
-        
         btn_reset = QPushButton("🗑️ Zurücksetzen")
         btn_reset.clicked.connect(self.reset_statistics)
         toolbar.addWidget(btn_reset)
-        
         btn_export = QPushButton("📊 Export CSV")
         btn_export.clicked.connect(self.export_statistics)
         toolbar.addWidget(btn_export)
-        
-        layout.addLayout(toolbar)
-        
+        ov_vbox.addLayout(toolbar)
+
         # Tabelle - Makro-Statistiken
         self.table_macros = QTableWidget()
         self.table_macros.setColumnCount(8)
@@ -84,9 +87,19 @@ class StatisticsTab(QWidget):
             "Erfolgsrate", "Durchschnitt", "Min/Max", "Letzte Ausführung"
         ])
         self.table_macros.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(QLabel("<b>Makro-Statistiken:</b>"))
-        layout.addWidget(self.table_macros)
-        
+        self.table_macros.setMinimumHeight(300)
+        ov_vbox.addWidget(QLabel("<b>Makro-Statistiken:</b>"))
+        ov_vbox.addWidget(self.table_macros)
+
+        ov_vbox.addStretch()
+        scroll_ov.setWidget(ov_container)
+        overview_tab_layout.addWidget(scroll_ov)
+        self.sub_tabs.addTab(overview_tab, "📈 Übersicht")
+
+        # --- Tab 2: Verlauf (Letzte Ausführungen) ---
+        history_tab = QWidget()
+        history_tab_layout = QVBoxLayout(history_tab)
+
         # Tabelle - Letzte Ausführungen
         self.table_recent = QTableWidget()
         self.table_recent.setColumnCount(5)
@@ -94,15 +107,16 @@ class StatisticsTab(QWidget):
             "Zeit", "Makro", "Dauer", "Aktionen", "Status"
         ])
         self.table_recent.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.table_recent.setMaximumHeight(200)
-        layout.addWidget(QLabel("<b>Letzte Ausführungen:</b>"))
-        layout.addWidget(self.table_recent)
-        
+        history_tab_layout.addWidget(QLabel("<b>Verlauf der letzten 1000 Ausführungen:</b>"))
+        history_tab_layout.addWidget(self.table_recent)
+
         # Info
         self.lbl_info = QLabel("Automatisches Tracking aller Makro-Ausführungen")
         self.lbl_info.setStyleSheet("color: gray; font-style: italic;")
-        layout.addWidget(self.lbl_info)
+        history_tab_layout.addWidget(self.lbl_info)
         
+        self.sub_tabs.addTab(history_tab, "📜 Verlauf")
+
         self.refresh_statistics()
     
     def refresh_statistics(self):

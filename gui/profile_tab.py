@@ -5,10 +5,34 @@ Profile-Verwaltungs Tab
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                               QListWidget, QListWidgetItem, QLabel, QLineEdit,
                               QTextEdit, QDialog, QDialogButtonBox, QMessageBox,
-                              QInputDialog, QGroupBox)
+                              QInputDialog, QGroupBox, QFormLayout, QComboBox)
 from PyQt6.QtCore import pyqtSignal, Qt
+from pathlib import Path
+import json
 from database import DatabaseManager
 from core import HotkeyManager
+
+
+def _game_templates_path():
+    return Path(__file__).resolve().parent.parent / "data" / "game_templates.json"
+
+
+def _load_game_templates():
+    p = _game_templates_path()
+    if not p.exists():
+        return []
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _save_game_templates(templates: list):
+    p = _game_templates_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(templates, f, indent=2, ensure_ascii=False)
 
 class ProfileTab(QWidget):
     """Tab für Profile-Verwaltung"""
@@ -76,6 +100,30 @@ class ProfileTab(QWidget):
         details_layout.addStretch()
         details_group.setLayout(details_layout)
         right_layout.addWidget(details_group)
+        
+        # Spiel-Vorlagen
+        templates_group = QGroupBox("Spiel-Vorlagen")
+        templates_layout = QVBoxLayout()
+        self.template_list = QListWidget()
+        self.template_list.setMaximumHeight(120)
+        templates_layout.addWidget(self.template_list)
+        template_btn_layout = QHBoxLayout()
+        self.btn_template_create = QPushButton("Vorlage erstellen")
+        self.btn_template_create.clicked.connect(self.create_game_template)
+        template_btn_layout.addWidget(self.btn_template_create)
+        self.btn_template_start = QPushButton("Starten")
+        self.btn_template_start.clicked.connect(self.start_game_template)
+        self.btn_template_start.setEnabled(False)
+        template_btn_layout.addWidget(self.btn_template_start)
+        self.btn_template_delete = QPushButton("Löschen")
+        self.btn_template_delete.clicked.connect(self.delete_game_template)
+        self.btn_template_delete.setEnabled(False)
+        template_btn_layout.addWidget(self.btn_template_delete)
+        templates_layout.addLayout(template_btn_layout)
+        templates_group.setLayout(templates_layout)
+        right_layout.addWidget(templates_group)
+        self.template_list.itemSelectionChanged.connect(self.on_template_selection_changed)
+        self.refresh_template_list()
         
         # Layouts zusammenfügen
         layout.addLayout(left_layout, 1)
@@ -187,6 +235,80 @@ class ProfileTab(QWidget):
     def get_selected_profile(self) -> int:
         """Gibt die ID des ausgewählten Profils zurück"""
         return self.current_profile_id
+
+    def refresh_template_list(self):
+        templates = _load_game_templates()
+        self.template_list.clear()
+        profiles = {p["id"]: p["name"] for p in self.db.get_profiles()}
+        for t in templates:
+            profile_name = profiles.get(t.get("profile_id"), "?")
+            label = f"{t.get('name', '?')} ({profile_name})"
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, t)
+            self.template_list.addItem(item)
+
+    def on_template_selection_changed(self):
+        has = self.template_list.currentItem() is not None
+        self.btn_template_start.setEnabled(has)
+        self.btn_template_delete.setEnabled(has)
+
+    def create_game_template(self):
+        profiles = self.db.get_profiles()
+        if not profiles:
+            QMessageBox.warning(self, "Hinweis", "Erstellen Sie zuerst ein Profil.")
+            return
+        name, ok = QInputDialog.getText(self, "Spiel-Vorlage", "Name der Vorlage (z. B. Spielname):")
+        if not ok or not name.strip():
+            return
+        profile_names = [p["name"] for p in profiles]
+        current_idx = 0
+        if self.current_profile_id:
+            for i, p in enumerate(profiles):
+                if p["id"] == self.current_profile_id:
+                    current_idx = i
+                    break
+        choice, ok = QInputDialog.getItem(self, "Spiel-Vorlage", "Profil:", profile_names, current_idx, False)
+        if not ok:
+            return
+        profile_id = profiles[profile_names.index(choice)]["id"]
+        window_filter, ok2 = QInputDialog.getText(self, "Spiel-Vorlage", "Fenster-Filter (optional, z. B. Spielname):", text="")
+        if not ok2:
+            return
+        templates = _load_game_templates()
+        templates.append({"name": name.strip(), "profile_id": profile_id, "window_filter": window_filter.strip()})
+        _save_game_templates(templates)
+        self.refresh_template_list()
+        QMessageBox.information(self, "Erfolg", "Spiel-Vorlage erstellt.")
+
+    def start_game_template(self):
+        item = self.template_list.currentItem()
+        if not item:
+            return
+        t = item.data(Qt.ItemDataRole.UserRole)
+        profile_id = t.get("profile_id")
+        window_filter = t.get("window_filter", "")
+        self.select_profile(profile_id)
+        if window_filter:
+            QMessageBox.information(self, "Spiel-Vorlage gestartet", f"Profil geladen.\nFenster-Filter für Makros: {window_filter}")
+        else:
+            QMessageBox.information(self, "Spiel-Vorlage gestartet", "Profil geladen.")
+
+    def delete_game_template(self):
+        item = self.template_list.currentItem()
+        if not item:
+            return
+        t = item.data(Qt.ItemDataRole.UserRole)
+        reply = QMessageBox.question(
+            self, "Vorlage löschen",
+            f"Vorlage '{t.get('name', '?')}' wirklich löschen?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        templates = [x for x in _load_game_templates() if x.get("name") != t.get("name") or x.get("profile_id") != t.get("profile_id")]
+        _save_game_templates(templates)
+        self.refresh_template_list()
+
 
 class ProfileDialog(QDialog):
     """Dialog zum Erstellen/Bearbeiten von Profilen"""

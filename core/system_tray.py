@@ -82,7 +82,7 @@ class SystemTrayManager(QObject):
         self.tray_icon.activated.connect(self._on_tray_activated)
         
         # Tooltip
-        self.tray_icon.setToolTip("Advanced Auto Clicker - Makro-Automatisierung")
+        self.tray_icon.setToolTip("Advanced Gaming - Makro- & Game-Automatisierung")
     
     def _on_tray_activated(self, reason):
         """Callback wenn Tray-Icon aktiviert wird"""

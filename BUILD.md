@@ -1,4 +1,4 @@
-# Advanced Auto Clicker - Build Anleitung
+# Advanced Gaming - Build Anleitung
 
 ## 🔨 Erstellen einer ausführbaren .exe-Datei
 
@@ -29,7 +29,7 @@ Das Script wird:
 #### 3. Fertig!
 Die ausführbare Datei befindet sich in:
 ```
-dist\AdvancedAutoClicker.exe
+dist\AdvancedGaming.exe
 ```
 
 ### 📦 Verteilung
@@ -85,7 +85,7 @@ Die .exe-Datei ist ca. 80-120 MB groß, da sie folgendes enthält:
 
 Wenn Sie die .exe an andere verteilen:
 
-1. **Download**: `AdvancedAutoClicker.exe` herunterladen
+1. **Download**: `AdvancedGaming.exe` herunterladen
 2. **Starten**: Doppelklick auf die .exe
 3. **Fertig**: Die Anwendung startet sofort!
 

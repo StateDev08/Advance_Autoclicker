@@ -25,6 +25,11 @@ class VariableManager:
             'str': str,
             'int': self._safe_int,
             'float': self._safe_float,
+            'min': self._func_min,
+            'max': self._func_max,
+            'abs': self._func_abs,
+            'round': self._func_round,
+            'clamp': self._func_clamp,
         }
     
     def reset(self):
@@ -253,6 +258,41 @@ class VariableManager:
             return float(value)
         except (ValueError, TypeError):
             return 0.0
+    
+    def _func_min(self, *args: Any) -> Any:
+        """Kleinster Wert aus den Argumenten"""
+        if not args:
+            raise ValueError("min() braucht mindestens ein Argument")
+        return min(args)
+    
+    def _func_max(self, *args: Any) -> Any:
+        """Größter Wert aus den Argumenten"""
+        if not args:
+            raise ValueError("max() braucht mindestens ein Argument")
+        return max(args)
+    
+    def _func_abs(self, x: Any) -> Any:
+        """Betrag einer Zahl"""
+        try:
+            return abs(float(x))
+        except (ValueError, TypeError):
+            return 0
+    
+    def _func_round(self, *args: Any) -> Any:
+        """Rundet eine Zahl (optional: round(zahl, nachkommastellen))"""
+        if not args:
+            raise ValueError("round() braucht mindestens ein Argument")
+        v = float(args[0])
+        if len(args) >= 2:
+            return round(v, int(args[1]))
+        return round(v)
+    
+    def _func_clamp(self, value: Any, low: Any, high: Any) -> Any:
+        """Begrenzt value auf den Bereich [low, high]"""
+        v = float(value) if not isinstance(value, (int, float)) else value
+        lo = float(low) if not isinstance(low, (int, float)) else low
+        hi = float(high) if not isinstance(high, (int, float)) else high
+        return max(lo, min(hi, v))
 
 
 class ConditionEvaluator:

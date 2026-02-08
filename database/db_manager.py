@@ -12,10 +12,17 @@ from datetime import datetime
 class DatabaseManager:
     """Verwaltet alle Datenbankoperationen"""
     
-    def __init__(self, db_path: str = "data/autoclicker.db"):
-        """Initialisiert die Datenbankverbindung"""
+    def __init__(self, db_path: str = "data/advanced_gaming.db"):
+        """Initialisiert die Datenbankverbindung.
+        Hinweis: Bei Upgrade von Advance_Autoclicker kann data/autoclicker.db
+        manuell nach data/advanced_gaming.db kopiert werden."""
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Migration: Falls alte autoclicker.db existiert und neue noch nicht, nutze alte
+        legacy = self.db_path.parent / "autoclicker.db"
+        if legacy.exists() and not self.db_path.exists():
+            import shutil
+            shutil.copy2(legacy, self.db_path)
         self.init_database()
     
     def get_connection(self):

@@ -35,15 +35,34 @@ class ActionEditorDialog(QDialog):
         self.cmb_type = QComboBox()
         self.cmb_type.addItems([
             "mouse_click",
+            "double_click",
             "mouse_move",
             "mouse_scroll",
             "key_press",
             "key_release",
+            "type_text",
             "wait",
             "set_variable",
             "if_condition",
             "click_on_image",
             "wait_for_image",
+            "wait_for_pixel_color",
+            "click_at_color",
+            "wait_for_any_color",
+            "click_at_any_color",
+            "random_delay",
+            "reaction_delay",
+            "wait_for_health_color",
+            "click_at_health_color",
+            "cooldown_wait",
+            "human_mouse_move",
+            "hold_key",
+            "release_key",
+            "mouse_drag",
+            "wait_for_image_region",
+            "random_click_region",
+            "key_sequence",
+            "jump_to_action",
             "log_message"
         ])
         self.cmb_type.currentTextChanged.connect(self.on_type_changed)
@@ -94,7 +113,7 @@ class ActionEditorDialog(QDialog):
                 item.widget().deleteLater()
         
         # Neue Widgets basierend auf Typ
-        if action_type in ['mouse_click', 'mouse_move']:
+        if action_type in ['mouse_click', 'mouse_move', 'double_click']:
             self.param_widgets['x'] = QSpinBox()
             self.param_widgets['x'].setRange(-9999, 9999)
             self.param_layout.addRow("X:", self.param_widgets['x'])
@@ -103,14 +122,20 @@ class ActionEditorDialog(QDialog):
             self.param_widgets['y'].setRange(-9999, 9999)
             self.param_layout.addRow("Y:", self.param_widgets['y'])
             
-            if action_type == 'mouse_click':
+            if action_type in ['mouse_click', 'double_click']:
                 self.param_widgets['button'] = QComboBox()
                 self.param_widgets['button'].addItems(['left', 'right', 'middle', 'x1', 'x2'])
                 self.param_layout.addRow("Button:", self.param_widgets['button'])
                 
-                self.param_widgets['pressed'] = QCheckBox("Gedrückt (sonst losgelassen)")
-                self.param_widgets['pressed'].setChecked(True)
-                self.param_layout.addRow("", self.param_widgets['pressed'])
+                if action_type == 'mouse_click':
+                    self.param_widgets['pressed'] = QCheckBox("Gedrückt (sonst losgelassen)")
+                    self.param_widgets['pressed'].setChecked(True)
+                    self.param_layout.addRow("", self.param_widgets['pressed'])
+        
+        elif action_type == 'type_text':
+            self.param_widgets['text'] = QLineEdit()
+            self.param_widgets['text'].setPlaceholderText("Text (Variablen: {name})")
+            self.param_layout.addRow("Text:", self.param_widgets['text'])
         
         elif action_type == 'mouse_scroll':
             self.param_widgets['x'] = QSpinBox()
@@ -193,6 +218,256 @@ class ActionEditorDialog(QDialog):
                 self.param_widgets['offset_y'].setRange(-500, 500)
                 self.param_layout.addRow("Offset Y:", self.param_widgets['offset_y'])
         
+        elif action_type == 'wait_for_pixel_color':
+            self.param_widgets['x'] = QSpinBox()
+            self.param_widgets['x'].setRange(0, 9999)
+            self.param_layout.addRow("X:", self.param_widgets['x'])
+            
+            self.param_widgets['y'] = QSpinBox()
+            self.param_widgets['y'].setRange(0, 9999)
+            self.param_layout.addRow("Y:", self.param_widgets['y'])
+            
+            self.param_widgets['color'] = QLineEdit()
+            self.param_widgets['color'].setPlaceholderText("#FF0000 oder 255,0,0")
+            self.param_layout.addRow("Farbe:", self.param_widgets['color'])
+            
+            self.param_widgets['tolerance'] = QSpinBox()
+            self.param_widgets['tolerance'].setRange(0, 255)
+            self.param_widgets['tolerance'].setValue(10)
+            self.param_layout.addRow("Toleranz:", self.param_widgets['tolerance'])
+            
+            self.param_widgets['timeout'] = QDoubleSpinBox()
+            self.param_widgets['timeout'].setRange(0.1, 999)
+            self.param_widgets['timeout'].setDecimals(1)
+            self.param_widgets['timeout'].setSuffix(" s")
+            self.param_widgets['timeout'].setValue(10.0)
+            self.param_layout.addRow("Timeout:", self.param_widgets['timeout'])
+        
+        elif action_type == 'click_at_color':
+            self.param_widgets['color'] = QLineEdit()
+            self.param_widgets['color'].setPlaceholderText("#FF0000 oder 255,0,0")
+            self.param_layout.addRow("Farbe:", self.param_widgets['color'])
+            
+            self.param_widgets['tolerance'] = QSpinBox()
+            self.param_widgets['tolerance'].setRange(0, 255)
+            self.param_widgets['tolerance'].setValue(10)
+            self.param_layout.addRow("Toleranz:", self.param_widgets['tolerance'])
+            
+            self.param_widgets['region'] = QLineEdit()
+            self.param_widgets['region'].setPlaceholderText("Leer = Vollbild, sonst x1,y1,x2,y2")
+            self.param_layout.addRow("Region:", self.param_widgets['region'])
+            
+            self.param_widgets['button'] = QComboBox()
+            self.param_widgets['button'].addItems(['left', 'right', 'middle'])
+            self.param_layout.addRow("Button:", self.param_widgets['button'])
+        
+        elif action_type == 'wait_for_any_color':
+            self.param_widgets['colors'] = QTextEdit()
+            self.param_widgets['colors'].setPlaceholderText("Eine Farbe pro Zeile:\n#FF0000\n0,255,0\n#00FF00")
+            self.param_widgets['colors'].setMaximumHeight(100)
+            self.param_layout.addRow("Farben (Priorität: von oben):", self.param_widgets['colors'])
+            self.param_widgets['tolerance'] = QSpinBox()
+            self.param_widgets['tolerance'].setRange(0, 255)
+            self.param_widgets['tolerance'].setValue(10)
+            self.param_layout.addRow("Toleranz:", self.param_widgets['tolerance'])
+            self.param_widgets['timeout'] = QDoubleSpinBox()
+            self.param_widgets['timeout'].setRange(0.1, 999)
+            self.param_widgets['timeout'].setDecimals(1)
+            self.param_widgets['timeout'].setSuffix(" s")
+            self.param_widgets['timeout'].setValue(10.0)
+            self.param_layout.addRow("Timeout:", self.param_widgets['timeout'])
+            self.param_widgets['region'] = QLineEdit()
+            self.param_widgets['region'].setPlaceholderText("Leer = Vollbild, sonst x1,y1,x2,y2")
+            self.param_layout.addRow("Region:", self.param_widgets['region'])
+        
+        elif action_type == 'click_at_any_color':
+            self.param_widgets['colors'] = QTextEdit()
+            self.param_widgets['colors'].setPlaceholderText("Eine Farbe pro Zeile:\n#FF0000\n0,255,0")
+            self.param_widgets['colors'].setMaximumHeight(100)
+            self.param_layout.addRow("Farben (Priorität: von oben):", self.param_widgets['colors'])
+            self.param_widgets['tolerance'] = QSpinBox()
+            self.param_widgets['tolerance'].setRange(0, 255)
+            self.param_widgets['tolerance'].setValue(10)
+            self.param_layout.addRow("Toleranz:", self.param_widgets['tolerance'])
+            self.param_widgets['region'] = QLineEdit()
+            self.param_widgets['region'].setPlaceholderText("Leer = Vollbild, sonst x1,y1,x2,y2")
+            self.param_layout.addRow("Region:", self.param_widgets['region'])
+            self.param_widgets['button'] = QComboBox()
+            self.param_widgets['button'].addItems(['left', 'right', 'middle'])
+            self.param_layout.addRow("Button:", self.param_widgets['button'])
+        
+        elif action_type == 'random_delay':
+            self.param_widgets['min_sec'] = QDoubleSpinBox()
+            self.param_widgets['min_sec'].setRange(0, 999)
+            self.param_widgets['min_sec'].setValue(0.5)
+            self.param_widgets['min_sec'].setSuffix(" s")
+            self.param_layout.addRow("Min (s):", self.param_widgets['min_sec'])
+            self.param_widgets['max_sec'] = QDoubleSpinBox()
+            self.param_widgets['max_sec'].setRange(0, 999)
+            self.param_widgets['max_sec'].setValue(1.5)
+            self.param_widgets['max_sec'].setSuffix(" s")
+            self.param_layout.addRow("Max (s):", self.param_widgets['max_sec'])
+        
+        elif action_type == 'reaction_delay':
+            self.param_widgets['min_ms'] = QSpinBox()
+            self.param_widgets['min_ms'].setRange(0, 5000)
+            self.param_widgets['min_ms'].setValue(50)
+            self.param_widgets['min_ms'].setSuffix(" ms")
+            self.param_layout.addRow("Min (ms):", self.param_widgets['min_ms'])
+            self.param_widgets['max_ms'] = QSpinBox()
+            self.param_widgets['max_ms'].setRange(0, 5000)
+            self.param_widgets['max_ms'].setValue(200)
+            self.param_widgets['max_ms'].setSuffix(" ms")
+            self.param_layout.addRow("Max (ms):", self.param_widgets['max_ms'])
+        
+        elif action_type == 'wait_for_health_color':
+            self.param_widgets['colors'] = QTextEdit()
+            self.param_widgets['colors'].setPlaceholderText("Eine Farbe pro Zeile (z. B. Lebensbalken)")
+            self.param_widgets['colors'].setMaximumHeight(80)
+            self.param_layout.addRow("Farben:", self.param_widgets['colors'])
+            self.param_widgets['tolerance'] = QSpinBox()
+            self.param_widgets['tolerance'].setRange(0, 255)
+            self.param_widgets['tolerance'].setValue(10)
+            self.param_layout.addRow("Toleranz:", self.param_widgets['tolerance'])
+            self.param_widgets['timeout'] = QDoubleSpinBox()
+            self.param_widgets['timeout'].setRange(0.1, 999)
+            self.param_widgets['timeout'].setValue(10.0)
+            self.param_widgets['timeout'].setSuffix(" s")
+            self.param_layout.addRow("Timeout:", self.param_widgets['timeout'])
+            self.param_widgets['region'] = QLineEdit()
+            self.param_widgets['region'].setPlaceholderText("x1,y1,x2,y2 oder leer")
+            self.param_layout.addRow("Region:", self.param_widgets['region'])
+            self.param_widgets['variable_prefix'] = QLineEdit()
+            self.param_widgets['variable_prefix'].setPlaceholderText("z. B. health_ für health_index, health_x, health_y")
+            self.param_layout.addRow("Variablen-Prefix:", self.param_widgets['variable_prefix'])
+        
+        elif action_type == 'click_at_health_color':
+            self.param_widgets['colors'] = QTextEdit()
+            self.param_widgets['colors'].setPlaceholderText("Eine Farbe pro Zeile (z. B. Potion-Button)")
+            self.param_widgets['colors'].setMaximumHeight(80)
+            self.param_layout.addRow("Farben:", self.param_widgets['colors'])
+            self.param_widgets['tolerance'] = QSpinBox()
+            self.param_widgets['tolerance'].setRange(0, 255)
+            self.param_widgets['tolerance'].setValue(10)
+            self.param_layout.addRow("Toleranz:", self.param_widgets['tolerance'])
+            self.param_widgets['region'] = QLineEdit()
+            self.param_widgets['region'].setPlaceholderText("x1,y1,x2,y2 oder leer")
+            self.param_layout.addRow("Region:", self.param_widgets['region'])
+            self.param_widgets['button'] = QComboBox()
+            self.param_widgets['button'].addItems(['left', 'right', 'middle'])
+            self.param_layout.addRow("Button:", self.param_widgets['button'])
+        
+        elif action_type == 'cooldown_wait':
+            self.param_widgets['min_sec'] = QDoubleSpinBox()
+            self.param_widgets['min_sec'].setRange(0, 999)
+            self.param_widgets['min_sec'].setValue(1.0)
+            self.param_widgets['min_sec'].setSuffix(" s")
+            self.param_layout.addRow("Min (s):", self.param_widgets['min_sec'])
+            self.param_widgets['max_sec'] = QDoubleSpinBox()
+            self.param_widgets['max_sec'].setRange(0, 999)
+            self.param_widgets['max_sec'].setValue(5.0)
+            self.param_widgets['max_sec'].setSuffix(" s")
+            self.param_layout.addRow("Max (s):", self.param_widgets['max_sec'])
+        
+        elif action_type == 'human_mouse_move':
+            self.param_widgets['x'] = QSpinBox()
+            self.param_widgets['x'].setRange(-9999, 9999)
+            self.param_layout.addRow("X:", self.param_widgets['x'])
+            self.param_widgets['y'] = QSpinBox()
+            self.param_widgets['y'].setRange(-9999, 9999)
+            self.param_layout.addRow("Y:", self.param_widgets['y'])
+            self.param_widgets['steps'] = QSpinBox()
+            self.param_widgets['steps'].setRange(3, 50)
+            self.param_widgets['steps'].setValue(10)
+            self.param_layout.addRow("Schritte:", self.param_widgets['steps'])
+            self.param_widgets['step_delay'] = QDoubleSpinBox()
+            self.param_widgets['step_delay'].setRange(0.01, 0.5)
+            self.param_widgets['step_delay'].setSingleStep(0.01)
+            self.param_widgets['step_delay'].setValue(0.03)
+            self.param_widgets['step_delay'].setSuffix(" s")
+            self.param_layout.addRow("Verzögerung pro Schritt:", self.param_widgets['step_delay'])
+            self.param_widgets['jitter'] = QSpinBox()
+            self.param_widgets['jitter'].setRange(0, 10)
+            self.param_widgets['jitter'].setValue(2)
+            self.param_layout.addRow("Jitter (Pixel):", self.param_widgets['jitter'])
+        
+        elif action_type == 'hold_key':
+            self.param_widgets['key'] = QLineEdit()
+            self.param_widgets['key'].setPlaceholderText("z.B. shift, space, w")
+            self.param_layout.addRow("Taste:", self.param_widgets['key'])
+            self.param_widgets['duration_ms'] = QSpinBox()
+            self.param_widgets['duration_ms'].setRange(10, 60000)
+            self.param_widgets['duration_ms'].setValue(500)
+            self.param_widgets['duration_ms'].setSuffix(" ms")
+            self.param_layout.addRow("Gedrückt halten:", self.param_widgets['duration_ms'])
+        elif action_type == 'release_key':
+            self.param_widgets['key'] = QLineEdit()
+            self.param_widgets['key'].setPlaceholderText("z.B. shift, space")
+            self.param_layout.addRow("Taste:", self.param_widgets['key'])
+        elif action_type == 'mouse_drag':
+            self.param_widgets['x1'] = QSpinBox()
+            self.param_widgets['y1'] = QSpinBox()
+            self.param_widgets['x2'] = QSpinBox()
+            self.param_widgets['y2'] = QSpinBox()
+            for w in (self.param_widgets['x1'], self.param_widgets['y1'], self.param_widgets['x2'], self.param_widgets['y2']):
+                w.setRange(-9999, 9999)
+            self.param_layout.addRow("Von X:", self.param_widgets['x1'])
+            self.param_layout.addRow("Von Y:", self.param_widgets['y1'])
+            self.param_layout.addRow("Nach X:", self.param_widgets['x2'])
+            self.param_layout.addRow("Nach Y:", self.param_widgets['y2'])
+            self.param_widgets['button'] = QComboBox()
+            self.param_widgets['button'].addItems(['left', 'right', 'middle'])
+            self.param_layout.addRow("Taste:", self.param_widgets['button'])
+            self.param_widgets['human_move'] = QCheckBox("Menschliche Bewegung")
+            self.param_layout.addRow("", self.param_widgets['human_move'])
+        elif action_type == 'wait_for_image_region':
+            self.param_widgets['template'] = QLineEdit()
+            self.param_widgets['template'].setPlaceholderText("Dateiname aus data/templates/")
+            self.param_layout.addRow("Template:", self.param_widgets['template'])
+            self.param_widgets['region'] = QLineEdit()
+            self.param_widgets['region'].setPlaceholderText("x,y,width,height z.B. 0,0,800,600")
+            self.param_layout.addRow("Region:", self.param_widgets['region'])
+            self.param_widgets['timeout'] = QDoubleSpinBox()
+            self.param_widgets['timeout'].setRange(0.5, 300)
+            self.param_widgets['timeout'].setValue(10)
+            self.param_widgets['timeout'].setSuffix(" s")
+            self.param_layout.addRow("Timeout:", self.param_widgets['timeout'])
+            self.param_widgets['confidence'] = QDoubleSpinBox()
+            self.param_widgets['confidence'].setRange(0.5, 1.0)
+            self.param_widgets['confidence'].setValue(0.8)
+            self.param_layout.addRow("Konfidenz:", self.param_widgets['confidence'])
+        elif action_type == 'random_click_region':
+            self.param_widgets['x'] = QSpinBox()
+            self.param_widgets['y'] = QSpinBox()
+            self.param_widgets['width'] = QSpinBox()
+            self.param_widgets['height'] = QSpinBox()
+            for w in (self.param_widgets['x'], self.param_widgets['y'], self.param_widgets['width'], self.param_widgets['height']):
+                w.setRange(0, 9999)
+            self.param_widgets['width'].setValue(100)
+            self.param_widgets['height'].setValue(100)
+            self.param_layout.addRow("X:", self.param_widgets['x'])
+            self.param_layout.addRow("Y:", self.param_widgets['y'])
+            self.param_layout.addRow("Breite:", self.param_widgets['width'])
+            self.param_layout.addRow("Höhe:", self.param_widgets['height'])
+            self.param_widgets['button'] = QComboBox()
+            self.param_widgets['button'].addItems(['left', 'right', 'middle'])
+            self.param_layout.addRow("Taste:", self.param_widgets['button'])
+        elif action_type == 'key_sequence':
+            self.param_widgets['keys'] = QLineEdit()
+            self.param_widgets['keys'].setPlaceholderText("Tasten kommagetrennt, z.B. ctrl,c,v")
+            self.param_layout.addRow("Tasten:", self.param_widgets['keys'])
+            self.param_widgets['delay_ms'] = QSpinBox()
+            self.param_widgets['delay_ms'].setRange(0, 2000)
+            self.param_widgets['delay_ms'].setValue(50)
+            self.param_widgets['delay_ms'].setSuffix(" ms")
+            self.param_layout.addRow("Delay zwischen Tasten:", self.param_widgets['delay_ms'])
+        elif action_type == 'jump_to_action':
+            self.param_widgets['action_index'] = QSpinBox()
+            self.param_widgets['action_index'].setRange(0, 9999)
+            self.param_widgets['action_index'].setValue(0)
+            self.param_widgets['action_index'].setToolTip("0 = erste Aktion, 1 = zweite, usw.")
+            self.param_layout.addRow("Aktions-Index (0-basiert):", self.param_widgets['action_index'])
+        
         elif action_type == 'log_message':
             self.param_widgets['message'] = QLineEdit()
             self.param_widgets['message'].setPlaceholderText("Log-Nachricht")
@@ -226,7 +501,25 @@ class ActionEditorDialog(QDialog):
                 elif isinstance(widget, QDoubleSpinBox):
                     widget.setValue(float(value))
                 elif isinstance(widget, QLineEdit):
-                    widget.setText(str(value))
+                    if key == 'color' and isinstance(value, (list, tuple)) and len(value) >= 3:
+                        widget.setText(','.join(str(int(c)) for c in value[:3]))
+                    elif key == 'region' and isinstance(value, (list, tuple)) and len(value) >= 4:
+                        widget.setText(','.join(str(int(x)) for x in value[:4]))
+                    elif key == 'keys' and isinstance(value, (list, tuple)):
+                        widget.setText(','.join(str(v) for v in value))
+                    else:
+                        widget.setText(str(value))
+                elif isinstance(widget, QTextEdit) and key == 'colors':
+                    if isinstance(value, (list, tuple)):
+                        lines = []
+                        for v in value:
+                            if isinstance(v, (list, tuple)) and len(v) >= 3:
+                                lines.append(','.join(str(int(c)) for c in v[:3]))
+                            else:
+                                lines.append(str(v))
+                        widget.setPlainText('\n'.join(lines))
+                    else:
+                        widget.setPlainText(str(value))
                 elif isinstance(widget, QComboBox):
                     index = widget.findText(str(value))
                     if index >= 0:
@@ -249,14 +542,25 @@ class ActionEditorDialog(QDialog):
                 action[key] = widget.value()
             elif isinstance(widget, QLineEdit):
                 text = widget.text()
-                # Versuche als Zahl zu parsen
-                try:
-                    action[key] = int(text)
-                except ValueError:
+                if key == 'keys':
+                    action[key] = [k.strip() for k in text.split(',') if k.strip()]
+                elif key == 'region' and text.strip():
+                    parts = [p.strip() for p in text.split(',')]
                     try:
-                        action[key] = float(text)
+                        action[key] = [int(p) for p in parts[:4]] if len(parts) >= 4 else None
                     except ValueError:
-                        action[key] = text
+                        action[key] = None
+                else:
+                    try:
+                        action[key] = int(text)
+                    except ValueError:
+                        try:
+                            action[key] = float(text)
+                        except ValueError:
+                            action[key] = text
+            elif isinstance(widget, QTextEdit) and key == 'colors':
+                lines = [line.strip() for line in widget.toPlainText().strip().split('\n') if line.strip()]
+                action[key] = lines
             elif isinstance(widget, QComboBox):
                 action[key] = widget.currentText()
             elif isinstance(widget, QCheckBox):
@@ -357,6 +661,11 @@ class MacroEditorWidget(QWidget):
             button = action.get('button', 'left')
             return f"{button} click at ({x}, {y})"
         
+        elif action_type == 'double_click':
+            x, y = action.get('x', 0), action.get('y', 0)
+            button = action.get('button', 'left')
+            return f"{button} double at ({x}, {y})"
+        
         elif action_type == 'mouse_move':
             x, y = action.get('x', 0), action.get('y', 0)
             return f"move to ({x}, {y})"
@@ -368,6 +677,14 @@ class MacroEditorWidget(QWidget):
         elif action_type == 'key_release':
             key = action.get('key', '')
             return f"release '{key}'"
+        
+        elif action_type == 'type_text':
+            text = action.get('text', '')
+            return f"type: {str(text)[:40]}{'...' if len(str(text)) > 40 else ''}"
+        
+        elif action_type == 'mouse_scroll':
+            dx, dy = action.get('dx', 0), action.get('dy', 0)
+            return f"scroll dx={dx}, dy={dy}"
         
         elif action_type == 'wait':
             duration = action.get('duration', 0)
@@ -390,6 +707,67 @@ class MacroEditorWidget(QWidget):
             template = action.get('template', '')
             timeout = action.get('timeout', 10)
             return f"wait for '{template}' ({timeout}s)"
+        
+        elif action_type == 'wait_for_pixel_color':
+            x, y = action.get('x', 0), action.get('y', 0)
+            timeout = action.get('timeout', 10)
+            return f"pixel ({x},{y}) timeout={timeout}s"
+        
+        elif action_type == 'click_at_color':
+            color = action.get('color', '')
+            return f"click color {str(color)[:20]}"
+        
+        elif action_type == 'wait_for_any_color':
+            colors = action.get('colors', [])
+            return f"wait any of {len(colors)} colors"
+        
+        elif action_type == 'click_at_any_color':
+            colors = action.get('colors', [])
+            return f"click any of {len(colors)} colors"
+        
+        elif action_type == 'random_delay':
+            mn, mx = action.get('min_sec', 0.5), action.get('max_sec', 1.5)
+            return f"random delay {mn}-{mx}s"
+        elif action_type == 'reaction_delay':
+            mn, mx = action.get('min_ms', 50), action.get('max_ms', 200)
+            return f"reaction {mn}-{mx}ms"
+        elif action_type == 'wait_for_health_color':
+            colors = action.get('colors', [])
+            return f"wait health color ({len(colors)} colors)"
+        elif action_type == 'click_at_health_color':
+            colors = action.get('colors', [])
+            return f"click health color ({len(colors)} colors)"
+        elif action_type == 'cooldown_wait':
+            mn, mx = action.get('min_sec', 1), action.get('max_sec', 5)
+            return f"cooldown {mn}-{mx}s"
+        elif action_type == 'human_mouse_move':
+            x, y = action.get('x', 0), action.get('y', 0)
+            return f"human move ({x},{y})"
+        elif action_type == 'hold_key':
+            key = action.get('key', '')
+            ms = action.get('duration_ms', 500)
+            return f"hold '{key}' {ms}ms"
+        elif action_type == 'release_key':
+            return f"release '{action.get('key', '')}'"
+        elif action_type == 'mouse_drag':
+            x1, y1 = action.get('x1', 0), action.get('y1', 0)
+            x2, y2 = action.get('x2', 0), action.get('y2', 0)
+            return f"drag ({x1},{y1})->({x2},{y2})"
+        elif action_type == 'wait_for_image_region':
+            t = action.get('template', '')
+            r = action.get('region', [])
+            return f"wait '{t}' in region {r}"
+        elif action_type == 'random_click_region':
+            x, y = action.get('x', 0), action.get('y', 0)
+            w, h = action.get('width', 100), action.get('height', 100)
+            return f"random click in ({x},{y}) {w}x{h}"
+        elif action_type == 'key_sequence':
+            keys = action.get('keys', [])
+            n = len(keys) if isinstance(keys, (list, tuple)) else 0
+            return f"key sequence ({n} keys)"
+        elif action_type == 'jump_to_action':
+            idx = action.get('action_index', 0)
+            return f"jump to action {idx}"
         
         elif action_type == 'log_message':
             msg = action.get('message', '')

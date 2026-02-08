@@ -9,17 +9,34 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                               QTableWidget, QTableWidgetItem, QHeaderView,
                               QProgressBar, QComboBox, QApplication)
 from PyQt6.QtCore import pyqtSignal, Qt
+from pathlib import Path
+import json
 from database import DatabaseManager
 from core import HotkeyManager, WindowDetector, MacroPlayer
+from core.webhook_notify import notify_macro_finished
 from gui.action_editor import MacroEditorWidget
 from pynput import keyboard, mouse
+
+
+def _load_game_filters():
+    """Lädt vordefinierte Fenster-Filter aus data/game_filters.json."""
+    path = Path(__file__).resolve().parent.parent / "data" / "game_filters.json"
+    if not path.exists():
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
 
 class MacroTab(QWidget):
     """Tab für Makro-Verwaltung"""
     
     playback_started = pyqtSignal(str)  # macro_name
     playback_stopped = pyqtSignal()
-    
+    playback_progress = pyqtSignal(float, int, int)  # progress_percent, loop, action
+    macro_list_changed = pyqtSignal()  # wenn Makro-Liste sich geändert hat (für Hotkey-Aktualisierung)
+
     def __init__(self, db: DatabaseManager, hotkey_manager: HotkeyManager, 
                  window_detector: WindowDetector):
         super().__init__()
@@ -152,6 +169,7 @@ class MacroTab(QWidget):
             item = QListWidgetItem(f"{macro['name']}")
             item.setData(Qt.ItemDataRole.UserRole, macro['id'])
             self.macro_list.addItem(item)
+        self.macro_list_changed.emit()
     
     def on_macro_clicked(self, item: QListWidgetItem):
         """Callback wenn ein Makro angeklickt wurde"""
@@ -332,6 +350,55 @@ class MacroTab(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Fehler", f"Fehler beim Löschen: {str(e)}")
     
+    def play_macro_by_id(self, macro_id: int, skip_window_check: bool = False):
+        """Spielt ein Makro per ID ab (z. B. für Tray, Scheduler, API)."""
+        macro = self.db.get_macro(macro_id)
+        if not macro:
+            return
+        self.current_macro_id = macro_id
+        self.btn_edit.setEnabled(True)
+        self.btn_edit_actions.setEnabled(True)
+        self.btn_delete.setEnabled(True)
+        self.btn_play.setEnabled(True)
+        if not skip_window_check and macro.get("window_filter"):
+            if not self.window_detector.matches_filter(macro["window_filter"]):
+                return  # Stille Ablehnung für API/Tray
+        self._run_macro(macro)
+
+    def _run_macro(self, macro: dict):
+        """Führt die Wiedergabe für ein Makro-Dict aus (von play_macro und play_macro_by_id)."""
+        self._last_played_macro_id = macro["id"]
+        self._last_played_macro_name = macro["name"]
+        self.btn_play.setEnabled(False)
+        self.btn_stop.setEnabled(True)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(True)
+        self.lbl_progress.setVisible(True)
+        is_infinite = self.chk_play_infinite.isChecked() or macro["loop_infinite"]
+        self.playback_started.emit(macro["name"])
+        # Anti-Erkennung aus Einstellungen
+        self.player.humanize_click_offset = self.db.get_setting("humanize_click_offset", "false") == "true"
+        if self.db.get_setting("humanize_delay_enabled", "false") == "true":
+            min_ms = int(self.db.get_setting("humanize_delay_min_ms", "0"))
+            max_ms = int(self.db.get_setting("humanize_delay_max_ms", "150"))
+            self.player.humanize_delay_before_action = (min_ms / 1000.0, max_ms / 1000.0)
+        else:
+            self.player.humanize_delay_before_action = None
+        speed_str = self.db.get_setting("default_speed", "1.0")
+        try:
+            speed = float(speed_str)
+        except Exception:
+            speed = 1.0
+        self.player.play(
+            macro["actions"],
+            macro["loop_count"],
+            is_infinite,
+            macro["delay_between_loops"],
+            speed,
+            on_progress=self.on_playback_progress,
+            on_complete=self.on_playback_complete,
+        )
+
     def play_macro(self):
         """Spielt das ausgewählte Makro ab"""
         if not self.current_macro_id:
@@ -356,45 +423,29 @@ class MacroTab(QWidget):
                 )
                 if reply == QMessageBox.StandardButton.No:
                     return
-        
-        self.btn_play.setEnabled(False)
-        self.btn_stop.setEnabled(True)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setVisible(True)
-        self.lbl_progress.setVisible(True)
-
-        # Endlos-Option aus Checkbox oder Makro-Einstellung verwenden
-        is_infinite = self.chk_play_infinite.isChecked() or macro['loop_infinite']
-        
-        # Signal aussenden
-        self.playback_started.emit(macro['name'])
-        
-        # Standard-Geschwindigkeit aus Einstellungen holen
-        speed_str = self.db.get_setting('default_speed', '1.0')
-        try:
-            speed = float(speed_str)
-        except Exception:
-            speed = 1.0
-
-        self.player.play(
-            macro['actions'],
-            macro['loop_count'],
-            is_infinite,
-            macro['delay_between_loops'],
-            speed,
-            on_progress=self.on_playback_progress,
-            on_complete=self.on_playback_complete
-        )
+        self._run_macro(macro)
     
     def stop_macro(self):
         """Stoppt die Makro-Wiedergabe"""
+        if getattr(self, "current_macro_id", None) is not None and self.db.get_setting("outgoing_webhook_enabled", "false") == "true":
+            url = self.db.get_setting("outgoing_webhook_url", "").strip()
+            if url:
+                macro = self.db.get_macro(self.current_macro_id)
+                if macro:
+                    notify_macro_finished(url, macro["id"], macro["name"], status="stopped")
         self.player.stop()
         self.playback_stopped.emit()
+    
+    def toggle_pause_resume(self):
+        """Pausiert oder setzt die Wiedergabe fort (für globalen Pause/Resume-Hotkey)."""
+        if self.player.is_playing:
+            self.player.paused = not self.player.paused
     
     def on_playback_progress(self, progress: float, loop: int, action: int):
         """Callback für Wiedergabe-Fortschritt"""
         self.progress_bar.setValue(int(progress))
         self.lbl_progress.setText(f"Loop {loop}, Aktion {action}")
+        self.playback_progress.emit(progress, loop, action)
     
     def on_playback_complete(self):
         """Callback wenn Wiedergabe abgeschlossen ist"""
@@ -403,6 +454,10 @@ class MacroTab(QWidget):
         self.progress_bar.setVisible(False)
         self.lbl_progress.setVisible(False)
         self.playback_stopped.emit()
+        if getattr(self, "_last_played_macro_id", None) is not None and self.db.get_setting("outgoing_webhook_enabled", "false") == "true":
+            url = self.db.get_setting("outgoing_webhook_url", "").strip()
+            if url:
+                notify_macro_finished(url, self._last_played_macro_id, self._last_played_macro_name, status="completed")
 
 class MacroDialog(QDialog):
     """Dialog zum Erstellen/Bearbeiten von Makros"""
@@ -504,9 +559,32 @@ class MacroDialog(QDialog):
         
         layout.addLayout(window_layout)
         
+        # Vordefinierte Fenster-Filter (Spiele/Apps), gruppiert nach Kategorie
+        preset_layout = QHBoxLayout()
+        preset_layout.addWidget(QLabel("Vordefiniert:"))
+        self.combo_window_preset = QComboBox()
+        self.combo_window_preset.addItem("— Kein vordefinierter Filter —", "")
+        filters_by_cat = {}
+        for item in _load_game_filters():
+            cat = item.get("category") or "Sonstige"
+            filters_by_cat.setdefault(cat, []).append(item)
+        for cat in sorted(filters_by_cat.keys()):
+            for item in filters_by_cat[cat]:
+                label = f"{cat} › {item['name']}" if cat != "Sonstige" else item["name"]
+                self.combo_window_preset.addItem(label, item["filter"])
+        self.combo_window_preset.currentIndexChanged.connect(self._on_window_preset_changed)
+        preset_layout.addWidget(self.combo_window_preset, 1)
+        layout.addLayout(preset_layout)
+        
         self.txt_window_filter = QLineEdit(self.macro['window_filter'])
         self.txt_window_filter.setPlaceholderText("Leer = Alle Fenster | z.B. 'Notepad' oder 'chrome.exe'")
+        self.txt_window_filter.textChanged.connect(self._on_window_filter_text_changed)
         layout.addWidget(self.txt_window_filter)
+        idx = self.combo_window_preset.findData(self.macro.get('window_filter') or '')
+        if idx >= 0:
+            self.combo_window_preset.blockSignals(True)
+            self.combo_window_preset.setCurrentIndex(idx)
+            self.combo_window_preset.blockSignals(False)
         
         # Fenster-Info anzeigen
         from core import WindowDetector
@@ -602,6 +680,24 @@ class MacroDialog(QDialog):
             info_text = f"<small>Erfasst: <b>{window_info['title']}</b> ({window_info['process']})</small>"
             self.lbl_current_window.setText(info_text)
             self.lbl_current_window.setStyleSheet("QLabel { color: green; }")
+    
+    def _on_window_preset_changed(self, index: int):
+        data = self.combo_window_preset.currentData()
+        if data is not None and data != "":
+            self.txt_window_filter.blockSignals(True)
+            self.txt_window_filter.setText(data)
+            self.txt_window_filter.blockSignals(False)
+    
+    def _on_window_filter_text_changed(self, text: str):
+        idx = self.combo_window_preset.findData(text)
+        if idx >= 0:
+            self.combo_window_preset.blockSignals(True)
+            self.combo_window_preset.setCurrentIndex(idx)
+            self.combo_window_preset.blockSignals(False)
+        elif self.combo_window_preset.currentIndex() != 0:
+            self.combo_window_preset.blockSignals(True)
+            self.combo_window_preset.setCurrentIndex(0)
+            self.combo_window_preset.blockSignals(False)
     
     def start_hotkey_recording(self):
         """Startet die Aufnahme einer Tastenkombination"""

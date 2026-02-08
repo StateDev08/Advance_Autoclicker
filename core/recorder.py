@@ -62,6 +62,17 @@ class MacroRecorder:
             )
             self.keyboard_listener.start()
     
+    def get_recorded_duration(self) -> float:
+        """Gibt die bisherige Aufnahmedauer in Sekunden zurück (0 wenn nicht am Aufnehmen)."""
+        if not self.is_recording or self.start_time is None:
+            return 0.0
+        return time.time() - self.start_time
+    
+    @property
+    def action_count(self) -> int:
+        """Anzahl der bisher aufgezeichneten Aktionen."""
+        return len(self.actions)
+    
     def stop_recording(self) -> List[Dict]:
         """Stoppt die Aufnahme und gibt die Aktionen zurück"""
         if not self.is_recording:

@@ -5,11 +5,13 @@ Einstellungs Tab
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                               QLabel, QLineEdit, QCheckBox, QSpinBox,
                               QDoubleSpinBox, QGroupBox, QComboBox, QMessageBox,
-                              QFormLayout, QFileDialog)
+                              QFormLayout, QFileDialog, QApplication, QScrollArea, QFrame,
+                              QTabWidget)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QKeyEvent
 from database import DatabaseManager
 from core import HotkeyManager, WindowDetector
+from gui.themes import THEME_IDS, get_theme_display_name, apply_theme, DEFAULT_THEME
 from pynput import keyboard, mouse
 import json
 from pathlib import Path
@@ -20,6 +22,7 @@ class SettingsTab(QWidget):
 
     # Wird aus einem anderen Thread (HotkeyManager) emit-tet, um die UI zu aktualisieren
     hotkey_debug_signal = pyqtSignal(str)
+    settings_saved = pyqtSignal()
 
     def __init__(self, db: DatabaseManager, hotkey_manager: HotkeyManager):
         super().__init__()
@@ -54,8 +57,23 @@ class SettingsTab(QWidget):
     
     def init_ui(self):
         """Initialisiert die UI"""
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+
+        # Tab-Widget für Unterkategorien
+        self.sub_tabs = QTabWidget()
+        main_layout.addWidget(self.sub_tabs)
+
+        # --- Tab 1: Allgemein & Design ---
+        general_tab = QWidget()
+        general_tab_layout = QVBoxLayout(general_tab)
         
+        scroll_general = QScrollArea()
+        scroll_general.setWidgetResizable(True)
+        scroll_general.setFrameShape(QFrame.Shape.NoFrame)
+        general_container = QWidget()
+        general_vbox = QVBoxLayout(general_container)
+
         # Allgemeine Einstellungen
         general_group = QGroupBox("Allgemeine Einstellungen")
         general_layout = QFormLayout()
@@ -64,15 +82,45 @@ class SettingsTab(QWidget):
         general_layout.addRow("Autostart:", self.chk_autostart)
         
         self.chk_minimize_tray = QCheckBox("In System-Tray minimieren")
+        self.chk_game_mode = QCheckBox("Spiel-Modus (Overlay-Updates reduzieren, weniger CPU)")
         general_layout.addRow("System-Tray:", self.chk_minimize_tray)
         
         self.chk_show_notifications = QCheckBox("Benachrichtigungen anzeigen")
         self.chk_show_notifications.setChecked(True)
         general_layout.addRow("Benachrichtigungen:", self.chk_show_notifications)
+        general_layout.addRow("Spiel-Modus:", self.chk_game_mode)
+        self.chk_sound_on_macro_end = QCheckBox("Sound bei Makro-Ende (Overlay)")
+        general_layout.addRow("Sound bei Ende:", self.chk_sound_on_macro_end)
         
         general_group.setLayout(general_layout)
-        layout.addWidget(general_group)
+        general_vbox.addWidget(general_group)
         
+        # Design / Theme
+        design_group = QGroupBox("Design")
+        design_layout = QFormLayout()
+        self.combo_theme = QComboBox()
+        for tid in THEME_IDS:
+            self.combo_theme.addItem(get_theme_display_name(tid), tid)
+        self.combo_theme.currentIndexChanged.connect(self._on_theme_changed)
+        design_layout.addRow("Theme:", self.combo_theme)
+        design_group.setLayout(design_layout)
+        general_vbox.addWidget(design_group)
+        
+        general_vbox.addStretch()
+        scroll_general.setWidget(general_container)
+        general_tab_layout.addWidget(scroll_general)
+        self.sub_tabs.addTab(general_tab, "🏠 Allgemein")
+
+        # --- Tab 2: Aufnahme & Wiedergabe ---
+        rec_play_tab = QWidget()
+        rec_play_layout = QVBoxLayout(rec_play_tab)
+        
+        scroll_rec = QScrollArea()
+        scroll_rec.setWidgetResizable(True)
+        scroll_rec.setFrameShape(QFrame.Shape.NoFrame)
+        rec_container = QWidget()
+        rec_vbox = QVBoxLayout(rec_container)
+
         # Aufnahme-Einstellungen
         recording_group = QGroupBox("Aufnahme-Einstellungen")
         recording_layout = QFormLayout()
@@ -93,7 +141,7 @@ class SettingsTab(QWidget):
         recording_layout.addRow("Tastatur:", self.chk_record_keyboard)
         
         recording_group.setLayout(recording_layout)
-        layout.addWidget(recording_group)
+        rec_vbox.addWidget(recording_group)
         
         # Wiedergabe-Einstellungen
         playback_group = QGroupBox("Wiedergabe-Einstellungen")
@@ -112,8 +160,46 @@ class SettingsTab(QWidget):
         playback_layout.addRow("Fehlerbehandlung:", self.chk_stop_on_error)
         
         playback_group.setLayout(playback_layout)
-        layout.addWidget(playback_group)
+        rec_vbox.addWidget(playback_group)
+
+        # Anti-Erkennung
+        antidetect_group = QGroupBox("Anti-Erkennung")
+        antidetect_layout = QFormLayout()
+        self.chk_humanize_click_offset = QCheckBox("Klick-Zufalls-Offset (einige Pixel Abweichung)")
+        antidetect_layout.addRow("", self.chk_humanize_click_offset)
+        self.chk_humanize_delay_enabled = QCheckBox("Zufalls-Delay vor jeder Aktion")
+        antidetect_layout.addRow("", self.chk_humanize_delay_enabled)
+        humanize_delay_layout = QHBoxLayout()
+        self.spin_humanize_delay_min_ms = QSpinBox()
+        self.spin_humanize_delay_min_ms.setRange(0, 2000)
+        self.spin_humanize_delay_min_ms.setValue(0)
+        self.spin_humanize_delay_min_ms.setSuffix(" ms")
+        humanize_delay_layout.addWidget(self.spin_humanize_delay_min_ms)
+        humanize_delay_layout.addWidget(QLabel("–"))
+        self.spin_humanize_delay_max_ms = QSpinBox()
+        self.spin_humanize_delay_max_ms.setRange(0, 2000)
+        self.spin_humanize_delay_max_ms.setValue(150)
+        self.spin_humanize_delay_max_ms.setSuffix(" ms")
+        humanize_delay_layout.addWidget(self.spin_humanize_delay_max_ms)
+        antidetect_layout.addRow("Delay-Bereich:", humanize_delay_layout)
+        antidetect_group.setLayout(antidetect_layout)
+        rec_vbox.addWidget(antidetect_group)
         
+        rec_vbox.addStretch()
+        scroll_rec.setWidget(rec_container)
+        rec_play_layout.addWidget(scroll_rec)
+        self.sub_tabs.addTab(rec_play_tab, "🎙️ Aufnahme & Wiedergabe")
+
+        # --- Tab 3: Hotkeys ---
+        hotkeys_tab = QWidget()
+        hotkeys_tab_layout = QVBoxLayout(hotkeys_tab)
+        
+        scroll_hk = QScrollArea()
+        scroll_hk.setWidgetResizable(True)
+        scroll_hk.setFrameShape(QFrame.Shape.NoFrame)
+        hk_container = QWidget()
+        hk_vbox = QVBoxLayout(hk_container)
+
         # Hotkey-Einstellungen
         hotkey_group = QGroupBox("Globale Hotkey-Einstellungen")
         hotkey_layout = QFormLayout()
@@ -180,6 +266,15 @@ class SettingsTab(QWidget):
         self.btn_emergency.clicked.connect(lambda: self.start_hotkey_recording(self.txt_emergency_stop))
         emergency_layout.addWidget(self.btn_emergency)
         hotkey_layout.addRow("⚠️ Notfall-Stop (Alles):", emergency_layout)
+        pause_resume_layout = QHBoxLayout()
+        self.txt_pause_resume_hotkey = QLineEdit()
+        self.txt_pause_resume_hotkey.setPlaceholderText("Pause/Resume Makro")
+        pause_resume_layout.addWidget(self.txt_pause_resume_hotkey)
+        self.btn_pause_resume_hk = QPushButton("🎙️ Aufnahme")
+        self.btn_pause_resume_hk.setMaximumWidth(100)
+        self.btn_pause_resume_hk.clicked.connect(lambda: self.start_hotkey_recording(self.txt_pause_resume_hotkey))
+        pause_resume_layout.addWidget(self.btn_pause_resume_hk)
+        hotkey_layout.addRow("⏸️ Pause/Resume Makro:", pause_resume_layout)
         
         # Overlay-Toggle Hotkey
         overlay_layout = QHBoxLayout()
@@ -192,71 +287,199 @@ class SettingsTab(QWidget):
         overlay_layout.addWidget(self.btn_overlay_toggle)
         hotkey_layout.addRow("🎮 Gaming-Overlay ein/aus:", overlay_layout)
         
+        # Screenshot Hotkey
+        screenshot_hk_layout = QHBoxLayout()
+        self.txt_screenshot_hotkey = QLineEdit()
+        self.txt_screenshot_hotkey.setPlaceholderText("z.B. ctrl+shift+s")
+        screenshot_hk_layout.addWidget(self.txt_screenshot_hotkey)
+        self.btn_screenshot_hk = QPushButton("🎙️ Aufnahme")
+        self.btn_screenshot_hk.setMaximumWidth(100)
+        self.btn_screenshot_hk.clicked.connect(lambda: self.start_hotkey_recording(self.txt_screenshot_hotkey))
+        screenshot_hk_layout.addWidget(self.btn_screenshot_hk)
+        hotkey_layout.addRow("📷 Screenshot (Vollbild):", screenshot_hk_layout)
+        
+        # Makro-Kette
+        chain_layout = QHBoxLayout()
+        self.txt_macro_chain_ids = QLineEdit()
+        self.txt_macro_chain_ids.setPlaceholderText("Makro-IDs kommagetrennt, z.B. 1,2,3")
+        chain_layout.addWidget(self.txt_macro_chain_ids)
+        hotkey_layout.addRow("Makro-Kette (IDs):", chain_layout)
+        chain_hk_layout = QHBoxLayout()
+        self.txt_macro_chain_hotkey = QLineEdit()
+        self.txt_macro_chain_hotkey.setPlaceholderText("Hotkey für Kette")
+        chain_hk_layout.addWidget(self.txt_macro_chain_hotkey)
+        self.btn_chain_hk = QPushButton("🎙️ Aufnahme")
+        self.btn_chain_hk.setMaximumWidth(100)
+        self.btn_chain_hk.clicked.connect(lambda: self.start_hotkey_recording(self.txt_macro_chain_hotkey))
+        chain_hk_layout.addWidget(self.btn_chain_hk)
+        hotkey_layout.addRow("Kette-Hotkey:", chain_hk_layout)
+        # Toggle-Makro
+        toggle_layout = QHBoxLayout()
+        self.txt_toggle_macro_id = QLineEdit()
+        self.txt_toggle_macro_id.setPlaceholderText("Makro-ID (ein Makro)")
+        toggle_layout.addWidget(self.txt_toggle_macro_id)
+        hotkey_layout.addRow("Toggle-Makro (ID):", toggle_layout)
+        toggle_hk_layout = QHBoxLayout()
+        self.txt_toggle_macro_hotkey = QLineEdit()
+        self.txt_toggle_macro_hotkey.setPlaceholderText("Gleicher Hotkey startet/stoppt")
+        toggle_hk_layout.addWidget(self.txt_toggle_macro_hotkey)
+        self.btn_toggle_hk = QPushButton("🎙️ Aufnahme")
+        self.btn_toggle_hk.setMaximumWidth(100)
+        self.btn_toggle_hk.clicked.connect(lambda: self.start_hotkey_recording(self.txt_toggle_macro_hotkey))
+        toggle_hk_layout.addWidget(self.btn_toggle_hk)
+        hotkey_layout.addRow("Toggle-Hotkey:", toggle_hk_layout)
+        
         self.chk_global_hotkeys = QCheckBox("Globale Hotkeys aktivieren")
         self.chk_global_hotkeys.setChecked(True)
         hotkey_layout.addRow("", self.chk_global_hotkeys)
         
+        # Hilfe-Text für Ingame-Nutzung
+        ingame_info = QLabel(
+            "<div style='background-color: rgba(255, 165, 0, 0.1); border: 1px solid orange; padding: 10px; border-radius: 5px;'>"
+            "<b>🎮 Ingame-Hinweise:</b><br>"
+            "1. Starten Sie das Programm immer als <b>Administrator</b>.<br>"
+            "2. Nutzen Sie den <b>'Fenster-Modus (Rahmenlos)'</b> (Borderless Windowed), damit das Overlay sichtbar bleibt.<br>"
+            "3. Bei Anti-Cheat-Problemen aktivieren Sie 'Anti-Erkennung' oben."
+            "</div>"
+        )
+        ingame_info.setWordWrap(True)
+        hotkey_layout.addRow("", ingame_info)
+
         hotkey_group.setLayout(hotkey_layout)
-        layout.addWidget(hotkey_group)
+        hk_vbox.addWidget(hotkey_group)
 
         # Debug-Bereich für Hotkeys
         debug_group = QGroupBox("Hotkey-Debug")
         debug_layout = QFormLayout()
-
         self.chk_hotkey_debug = QCheckBox("Hotkey-Debug aktivieren")
         self.chk_hotkey_debug.stateChanged.connect(self.on_hotkey_debug_toggled)
         debug_layout.addRow(self.chk_hotkey_debug)
-
         self.lbl_hotkey_debug = QLabel("<small>Letzte Kombination: -</small>")
         self.lbl_hotkey_debug.setWordWrap(True)
         debug_layout.addRow("", self.lbl_hotkey_debug)
-
         debug_group.setLayout(debug_layout)
-        layout.addWidget(debug_group)
+        hk_vbox.addWidget(debug_group)
+        
+        hk_vbox.addStretch()
+        scroll_hk.setWidget(hk_container)
+        hotkeys_tab_layout.addWidget(scroll_hk)
+        self.sub_tabs.addTab(hotkeys_tab, "⌨️ Hotkeys")
+
+        # --- Tab 4: API & Daten ---
+        api_tab = QWidget()
+        api_tab_layout = QVBoxLayout(api_tab)
+        
+        scroll_api = QScrollArea()
+        scroll_api.setWidgetResizable(True)
+        scroll_api.setFrameShape(QFrame.Shape.NoFrame)
+        api_container = QWidget()
+        api_vbox = QVBoxLayout(api_container)
+
+        # API & Integrationen
+        api_group = QGroupBox("API & Integrationen")
+        api_layout = QFormLayout()
+        api_info = QLabel(
+            "<small>Lokale HTTP-API für Browser-Erweiterung, OBS, Stream Deck, Scripts. "
+            "Läuft nur auf 127.0.0.1. Nach Änderung Anwendung neu starten.</small>"
+        )
+        api_info.setWordWrap(True)
+        api_layout.addRow("", api_info)
+        self.chk_api_enabled = QCheckBox("Lokale API aktivieren")
+        api_layout.addRow("", self.chk_api_enabled)
+        self.spin_api_port = QSpinBox()
+        self.spin_api_port.setRange(1024, 65535)
+        self.spin_api_port.setValue(5847)
+        api_layout.addRow("Port:", self.spin_api_port)
+        self.txt_webhook_token = QLineEdit()
+        self.txt_webhook_token.setPlaceholderText("Optional: Token für POST /api/trigger")
+        self.txt_webhook_token.setEchoMode(QLineEdit.EchoMode.Password)
+        api_layout.addRow("Webhook-Token:", self.txt_webhook_token)
+        self.chk_outgoing_webhook = QCheckBox("Beim Makro-Ende HTTP-POST senden (Outgoing)")
+        api_layout.addRow("", self.chk_outgoing_webhook)
+        self.txt_outgoing_webhook_url = QLineEdit()
+        self.txt_outgoing_webhook_url.setPlaceholderText("z.B. http://localhost:9000/macro-done")
+        api_layout.addRow("Outgoing-URL:", self.txt_outgoing_webhook_url)
+        self.txt_obs_status_file = QLineEdit()
+        self.txt_obs_status_file.setPlaceholderText("Leer = aus. Pfad für OBS „Text from file“ (z.B. C:/obs/status.txt)")
+        api_layout.addRow("OBS-Status-Datei:", self.txt_obs_status_file)
+        api_group.setLayout(api_layout)
+        api_vbox.addWidget(api_group)
+
+        # Screenshot
+        screenshot_group = QGroupBox("Screenshot")
+        screenshot_layout = QFormLayout()
+        self.txt_screenshot_folder = QLineEdit()
+        self.txt_screenshot_folder.setPlaceholderText("Leer = data/screenshots")
+        screenshot_layout.addRow("Speicherordner:", self.txt_screenshot_folder)
+        screenshot_group.setLayout(screenshot_layout)
+        api_vbox.addWidget(screenshot_group)
+
+        # Video-Aufnahme
+        video_group = QGroupBox("Video-Aufnahme")
+        video_layout = QFormLayout()
+        self.txt_video_folder = QLineEdit()
+        self.txt_video_folder.setPlaceholderText("Leer = data/recordings")
+        video_layout.addRow("Speicherordner:", self.txt_video_folder)
+        self.spin_video_fps = QSpinBox()
+        self.spin_video_fps.setRange(1, 60)
+        self.spin_video_fps.setValue(30)
+        self.spin_video_fps.setSuffix(" FPS")
+        video_layout.addRow("FPS:", self.spin_video_fps)
+        video_start_hk = QHBoxLayout()
+        self.txt_video_start_hotkey = QLineEdit()
+        video_start_hk.addWidget(self.txt_video_start_hotkey)
+        self.btn_video_start_hk = QPushButton("🎙️ Aufnahme")
+        self.btn_video_start_hk.setMaximumWidth(100)
+        self.btn_video_start_hk.clicked.connect(lambda: self.start_hotkey_recording(self.txt_video_start_hotkey))
+        video_start_hk.addWidget(self.btn_video_start_hk)
+        video_layout.addRow("Hotkey Start:", video_start_hk)
+        video_stop_hk = QHBoxLayout()
+        self.txt_video_stop_hotkey = QLineEdit()
+        video_stop_hk.addWidget(self.txt_video_stop_hotkey)
+        self.btn_video_stop_hk = QPushButton("🎙️ Aufnahme")
+        self.btn_video_stop_hk.setMaximumWidth(100)
+        self.btn_video_stop_hk.clicked.connect(lambda: self.start_hotkey_recording(self.txt_video_stop_hotkey))
+        video_stop_hk.addWidget(self.btn_video_stop_hk)
+        video_layout.addRow("Hotkey Stopp:", video_stop_hk)
+        video_group.setLayout(video_layout)
+        api_vbox.addWidget(video_group)
         
         # Datenverwaltung
         data_group = QGroupBox("Datenverwaltung")
         data_layout = QVBoxLayout()
-        
         btn_layout = QHBoxLayout()
-        
         self.btn_export = QPushButton("📤 Exportieren")
         self.btn_export.clicked.connect(self.export_data)
         btn_layout.addWidget(self.btn_export)
-        
         self.btn_import = QPushButton("📥 Importieren")
         self.btn_import.clicked.connect(self.import_data)
         btn_layout.addWidget(self.btn_import)
-        
         self.btn_backup = QPushButton("💾 Backup erstellen")
         self.btn_backup.clicked.connect(self.create_backup)
         btn_layout.addWidget(self.btn_backup)
-        
         data_layout.addLayout(btn_layout)
-        
-        # Diagnose-Button für Fenster-Erkennung
         diagnose_layout =  QHBoxLayout()
         self.btn_test_window = QPushButton("🧪 Fenster-Erkennung testen")
         self.btn_test_window.clicked.connect(self.test_window_detection)
         diagnose_layout.addWidget(self.btn_test_window)
         diagnose_layout.addStretch()
         data_layout.addLayout(diagnose_layout)
-        
         data_group.setLayout(data_layout)
-        layout.addWidget(data_group)
-        
-        # Speichern-Button
-        layout.addStretch()
-        
+        api_vbox.addWidget(data_group)
+
+        api_vbox.addStretch()
+        scroll_api.setWidget(api_container)
+        api_tab_layout.addWidget(scroll_api)
+        self.sub_tabs.addTab(api_tab, "📊 API & Daten")
+
+        # --- Speichern-Button ---
         btn_save_layout = QHBoxLayout()
         btn_save_layout.addStretch()
-        
         self.btn_save = QPushButton("💾 Einstellungen speichern")
         self.btn_save.clicked.connect(self.save_settings)
         self.btn_save.setStyleSheet("QPushButton { font-size: 12pt; padding: 10px; }")
         btn_save_layout.addWidget(self.btn_save)
-        
-        layout.addLayout(btn_save_layout)
+        main_layout.addLayout(btn_save_layout)
     
     def load_settings(self):
         """Lädt gespeicherte Einstellungen"""
@@ -275,6 +498,10 @@ class SettingsTab(QWidget):
         # Wiedergabe
         self.spin_default_speed.setValue(float(settings.get('default_speed', '1.0')))
         self.chk_stop_on_error.setChecked(settings.get('stop_on_error', 'true') == 'true')
+        self.chk_humanize_click_offset.setChecked(settings.get('humanize_click_offset', 'false') == 'true')
+        self.chk_humanize_delay_enabled.setChecked(settings.get('humanize_delay_enabled', 'false') == 'true')
+        self.spin_humanize_delay_min_ms.setValue(int(settings.get('humanize_delay_min_ms', '0')))
+        self.spin_humanize_delay_max_ms.setValue(int(settings.get('humanize_delay_max_ms', '150')))
         
         # Hotkeys
         self.txt_hotkey_record_start.setText(settings.get('hotkey_record_start', ''))
@@ -282,8 +509,42 @@ class SettingsTab(QWidget):
         self.txt_hotkey_record_stop.setText(settings.get('hotkey_record_stop', ''))
         self.txt_hotkey_play_stop.setText(settings.get('hotkey_play_stop', ''))
         self.txt_emergency_stop.setText(settings.get('emergency_stop_hotkey', ''))
+        self.txt_pause_resume_hotkey.setText(settings.get('pause_resume_hotkey', ''))
         self.txt_overlay_toggle.setText(settings.get('overlay_toggle_hotkey', 'ctrl+shift+o'))
+        self.txt_screenshot_hotkey.setText(settings.get('screenshot_hotkey', ''))
+        self.txt_macro_chain_ids.setText(settings.get('macro_chain_ids', ''))
+        self.txt_macro_chain_hotkey.setText(settings.get('macro_chain_hotkey', ''))
+        self.txt_toggle_macro_id.setText(settings.get('toggle_macro_id', ''))
+        self.txt_toggle_macro_hotkey.setText(settings.get('toggle_macro_hotkey', ''))
         self.chk_global_hotkeys.setChecked(settings.get('global_hotkeys', 'true') == 'true')
+        self.chk_game_mode.setChecked(settings.get('game_mode', 'false') == 'true')
+        self.chk_sound_on_macro_end.setChecked(settings.get('sound_on_macro_end', 'false') == 'true')
+        # API
+        self.chk_api_enabled.setChecked(settings.get('api_enabled', 'false') == 'true')
+        self.spin_api_port.setValue(int(settings.get('api_port', '5847')))
+        self.txt_webhook_token.setText(settings.get('webhook_token', ''))
+        self.chk_outgoing_webhook.setChecked(settings.get('outgoing_webhook_enabled', 'false') == 'true')
+        self.txt_outgoing_webhook_url.setText(settings.get('outgoing_webhook_url', ''))
+        self.txt_obs_status_file.setText(settings.get('obs_status_file', ''))
+        self.txt_screenshot_folder.setText(settings.get('screenshot_folder', ''))
+        self.txt_video_folder.setText(settings.get('video_folder', ''))
+        self.spin_video_fps.setValue(int(settings.get('video_fps', '30')))
+        self.txt_video_start_hotkey.setText(settings.get('video_start_hotkey', ''))
+        self.txt_video_stop_hotkey.setText(settings.get('video_stop_hotkey', ''))
+        # Theme
+        theme_id = settings.get('theme_id', DEFAULT_THEME)
+        idx = self.combo_theme.findData(theme_id)
+        if idx >= 0:
+            self.combo_theme.blockSignals(True)
+            self.combo_theme.setCurrentIndex(idx)
+            self.combo_theme.blockSignals(False)
+    
+    def _on_theme_changed(self):
+        """Theme sofort anwenden wenn Nutzer die ComboBox ändert."""
+        theme_id = self.combo_theme.currentData()
+        if theme_id:
+            app = QApplication.instance()
+            apply_theme(app, theme_id)
     
     def save_settings(self):
         """Speichert Einstellungen"""
@@ -291,6 +552,9 @@ class SettingsTab(QWidget):
         self.db.set_setting('autostart', 'true' if self.chk_autostart.isChecked() else 'false')
         self.db.set_setting('minimize_tray', 'true' if self.chk_minimize_tray.isChecked() else 'false')
         self.db.set_setting('show_notifications', 'true' if self.chk_show_notifications.isChecked() else 'false')
+        theme_id = self.combo_theme.currentData()
+        if theme_id:
+            self.db.set_setting('theme_id', theme_id)
         
         # Aufnahme
         self.db.set_setting('mouse_threshold', str(self.spin_mouse_threshold.value()))
@@ -300,6 +564,10 @@ class SettingsTab(QWidget):
         # Wiedergabe
         self.db.set_setting('default_speed', str(self.spin_default_speed.value()))
         self.db.set_setting('stop_on_error', 'true' if self.chk_stop_on_error.isChecked() else 'false')
+        self.db.set_setting('humanize_click_offset', 'true' if self.chk_humanize_click_offset.isChecked() else 'false')
+        self.db.set_setting('humanize_delay_enabled', 'true' if self.chk_humanize_delay_enabled.isChecked() else 'false')
+        self.db.set_setting('humanize_delay_min_ms', str(self.spin_humanize_delay_min_ms.value()))
+        self.db.set_setting('humanize_delay_max_ms', str(self.spin_humanize_delay_max_ms.value()))
         
         # Hotkeys
         self.db.set_setting('hotkey_record_start', self.txt_hotkey_record_start.text())
@@ -307,9 +575,30 @@ class SettingsTab(QWidget):
         self.db.set_setting('hotkey_record_stop', self.txt_hotkey_record_stop.text())
         self.db.set_setting('hotkey_play_stop', self.txt_hotkey_play_stop.text())
         self.db.set_setting('emergency_stop_hotkey', self.txt_emergency_stop.text())
+        self.db.set_setting('pause_resume_hotkey', self.txt_pause_resume_hotkey.text())
         self.db.set_setting('overlay_toggle_hotkey', self.txt_overlay_toggle.text())
+        self.db.set_setting('screenshot_hotkey', self.txt_screenshot_hotkey.text())
+        self.db.set_setting('macro_chain_ids', self.txt_macro_chain_ids.text().strip())
+        self.db.set_setting('macro_chain_hotkey', self.txt_macro_chain_hotkey.text())
+        self.db.set_setting('toggle_macro_id', self.txt_toggle_macro_id.text().strip())
+        self.db.set_setting('toggle_macro_hotkey', self.txt_toggle_macro_hotkey.text())
         self.db.set_setting('global_hotkeys', 'true' if self.chk_global_hotkeys.isChecked() else 'false')
+        self.db.set_setting('game_mode', 'true' if self.chk_game_mode.isChecked() else 'false')
+        self.db.set_setting('sound_on_macro_end', 'true' if self.chk_sound_on_macro_end.isChecked() else 'false')
+        # API
+        self.db.set_setting('api_enabled', 'true' if self.chk_api_enabled.isChecked() else 'false')
+        self.db.set_setting('api_port', str(self.spin_api_port.value()))
+        self.db.set_setting('webhook_token', self.txt_webhook_token.text())
+        self.db.set_setting('outgoing_webhook_enabled', 'true' if self.chk_outgoing_webhook.isChecked() else 'false')
+        self.db.set_setting('outgoing_webhook_url', self.txt_outgoing_webhook_url.text().strip())
+        self.db.set_setting('obs_status_file', self.txt_obs_status_file.text().strip())
+        self.db.set_setting('screenshot_folder', self.txt_screenshot_folder.text().strip())
+        self.db.set_setting('video_folder', self.txt_video_folder.text().strip())
+        self.db.set_setting('video_fps', str(self.spin_video_fps.value()))
+        self.db.set_setting('video_start_hotkey', self.txt_video_start_hotkey.text())
+        self.db.set_setting('video_stop_hotkey', self.txt_video_stop_hotkey.text())
         
+        self.settings_saved.emit()
         QMessageBox.information(self, "Erfolg", "Einstellungen gespeichert!\n\nBitte starten Sie die Anwendung neu, damit die Hotkeys aktiv werden.")
 
     # --- Hotkey-Debug ---
@@ -536,7 +825,7 @@ class SettingsTab(QWidget):
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Daten exportieren",
-            "autoclicker_export.json",
+            "advanced_gaming_export.json",
             "JSON Files (*.json)"
         )
         
@@ -629,7 +918,7 @@ class SettingsTab(QWidget):
         backup_dir.mkdir(exist_ok=True)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = backup_dir / f"autoclicker_backup_{timestamp}.db"
+        backup_path = backup_dir / f"advanced_gaming_backup_{timestamp}.db"
         
         try:
             import shutil

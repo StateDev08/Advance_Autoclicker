@@ -271,6 +271,17 @@ class ImageRecognition:
         
         return None
     
+    def clear_cache(self) -> None:
+        """Leert den Template-Cache (z. B. nach Änderungen an Bilddateien)."""
+        self._template_cache.clear()
+    
+    def invalidate_template(self, name: str) -> None:
+        """Entfernt ein Template aus dem Cache (wird beim nächsten Zugriff neu geladen)."""
+        if name.endswith('.png'):
+            name = name[:-4]
+        if name in self._template_cache:
+            del self._template_cache[name]
+    
     def list_templates(self) -> List[str]:
         """
         Listet alle verfügbaren Templates auf

@@ -1,4 +1,4 @@
-# Changelog - Advanced Auto Clicker
+# Changelog - Advanced Gaming
 
 ## Version 3.0.0 (2026-02-03) - 🔥 ULTIMATE UPDATE: ÜBER 400% FUNKTIONALITÄT!
 

@@ -92,6 +92,29 @@ class PixelDetector:
         
         return None
     
+    def find_first_of_colors(
+        self,
+        target_colors: List[Tuple[int, int, int]],
+        region: Optional[Tuple[int, int, int, int]] = None,
+        tolerance: int = 10,
+    ) -> Optional[Tuple[PixelMatch, int]]:
+        """
+        Sucht die erste gefundene Farbe aus einer Liste (Priorität: Reihenfolge).
+        
+        Args:
+            target_colors: Liste von (R, G, B)
+            region: Suchbereich (x, y, width, height) oder None für Vollbild
+            tolerance: Toleranz
+            
+        Returns:
+            (PixelMatch, color_index) oder None
+        """
+        for idx, target_color in enumerate(target_colors):
+            match = self.find_color(target_color, region=region, tolerance=tolerance)
+            if match:
+                return (match, idx)
+        return None
+    
     def find_all_colors(self, target_color: Tuple[int, int, int],
                        region: Optional[Tuple[int, int, int, int]] = None,
                        tolerance: int = 10,
@@ -178,6 +201,33 @@ class PixelDetector:
             time.sleep(check_interval)
         
         return False
+    
+    def wait_for_color_in_region(self, target_color: Tuple[int, int, int],
+                                  region: Optional[Tuple[int, int, int, int]] = None,
+                                  tolerance: int = 10,
+                                  timeout: float = 10.0,
+                                  check_interval: float = 0.2) -> Optional['PixelMatch']:
+        """
+        Wartet bis die Farbe irgendwo in einer Region erscheint.
+        
+        Args:
+            target_color: Gesuchte Farbe (R, G, B)
+            region: Suchbereich (x, y, width, height) oder None für Vollbild
+            tolerance: Toleranz
+            timeout: Maximale Wartezeit in Sekunden
+            check_interval: Prüfintervall in Sekunden
+            
+        Returns:
+            PixelMatch bei Erfolg, None bei Timeout
+        """
+        import time
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            match = self.find_color(target_color, region=region, tolerance=tolerance)
+            if match:
+                return match
+            time.sleep(check_interval)
+        return None
     
     def color_to_hex(self, color: Tuple[int, int, int]) -> str:
         """

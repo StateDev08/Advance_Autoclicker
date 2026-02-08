@@ -1,6 +1,6 @@
 @echo off
 echo ======================================
-echo Advanced Auto Clicker - Build
+echo Advanced Gaming - Build
 echo ======================================
 echo.
 
@@ -43,7 +43,7 @@ echo Build erfolgreich!
 echo ======================================
 echo.
 echo Die .exe-Datei finden Sie in:
-echo   dist\AdvancedAutoClicker.exe
+echo   dist\AdvancedGaming.exe
 echo.
 echo Sie koennen die Datei jetzt an einen beliebigen Ort kopieren.
 echo.

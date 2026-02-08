@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                               QLabel, QLineEdit, QTextEdit, QMessageBox,
                               QGroupBox, QTableWidget, QTableWidgetItem,
                               QHeaderView, QComboBox, QDialog, QDialogButtonBox,
-                              QSpinBox, QCheckBox, QDoubleSpinBox)
+                              QSpinBox, QCheckBox, QDoubleSpinBox, QScrollArea, QFrame)
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 from database import DatabaseManager
 from core import MacroRecorder
@@ -31,7 +31,12 @@ class RecorderTab(QWidget):
     
     def init_ui(self):
         """Initialisiert die UI"""
-        layout = QVBoxLayout(self)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        
+        container = QWidget()
+        layout = QVBoxLayout(container)
         
         # Steuerung
         control_group = QGroupBox("Aufnahme-Steuerung")
@@ -103,6 +108,7 @@ class RecorderTab(QWidget):
         self.table_actions.setColumnCount(4)
         self.table_actions.setHorizontalHeaderLabels(["#", "Typ", "Details", "Verzögerung (s)"])
         self.table_actions.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.table_actions.setMinimumHeight(200)
         actions_layout.addWidget(self.table_actions)
         
         # Buttons für Aktionen
@@ -120,6 +126,11 @@ class RecorderTab(QWidget):
         
         actions_group.setLayout(actions_layout)
         layout.addWidget(actions_group)
+        
+        scroll.setWidget(container)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(scroll)
         
         # Timer für Aufnahmedauer
         self.timer = QTimer()

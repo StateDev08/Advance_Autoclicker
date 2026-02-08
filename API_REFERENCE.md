@@ -1,4 +1,4 @@
-# API-Referenz - Advanced Auto Clicker v3.0
+# API-Referenz - Advanced Gaming v3.0
 
 ## 📋 Übersicht
 

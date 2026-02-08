@@ -1,4 +1,4 @@
-# 🚀 Quick Start Guide - Advanced Auto Clicker v3.0
+# 🚀 Quick Start Guide - Advanced Gaming v3.0
 
 ## ⏱️ 5-Minuten-Setup
 
@@ -6,7 +6,7 @@
 
 ```powershell
 # In Projektordner navigieren
-cd d:\Projekte\Advance_Autoclicker
+cd d:\Projekte\Advanced_Gaming
 
 # Dependencies installieren
 pip install -r requirements.txt
@@ -75,6 +75,36 @@ python main.py
 6. Speichern
 
 **Ergebnis:** Makro läuft jeden Tag automatisch um 08:00!
+
+---
+
+## 🎮 Für Gamer – Wichtige Voraussetzungen
+
+Damit Makros und das Overlay in Spielen zuverlässig funktionieren, beachten Sie bitte folgende Punkte:
+
+1.  **Administratorrechte:** Starten Sie `Advanced Gaming` immer als **Administrator** (Rechtsklick auf die EXE oder `main.py` -> "Als Administrator ausführen"). Ohne diese Rechte können Makros oft keine Eingaben in Spielefenster senden.
+2.  **Borderless Windowed Mode:** Stellen Sie Ihr Spiel auf **"Fenster-Modus (Rahmenlos)"** (Borderless Windowed) ein. In "Echtem Vollbild" (Exclusive Fullscreen) kann Windows das Overlay oft nicht über das Spiel zeichnen.
+3.  **Fenster-Filter:** Nutzen Sie Fenster-Filter, damit Makros nur im Spiel aktiv sind.
+4.  **Anti-Cheat:** Bei aggressiven Anti-Cheats nutzen Sie die **Anti-Erkennung**-Features (Zufalls-Delays, Human Mouse Move) in den Einstellungen.
+
+---
+
+## 🎮 Features für Gamer – Overlay, Fenster-Filter, Steam/GeForce Now, Anti-Erkennung
+
+- **Overlay:** Zeigt „Bereit“ / „Läuft“ und Fortschritt; Kompakt-Modus (▸), Minimal (M), Pin, Click-through. Optional: Countdown (z. B. „Nächster Skill in 12s“), Anzeige des aktiven Fensters/Spiels. Hotkey in Einstellungen.
+- **Fenster-Filter:** Beim Bearbeiten eines Makros „Vordefiniert“ nutzen: Kategorien **Steam / GeForce Now** und **Spiele** (z. B. Steam, GeForce Now, Valorant, Minecraft, Roblox, GTA V, CS2, Elden Ring, Fortnite, LoL) oder „Aktuelles Fenster erfassen“. Makro läuft nur, wenn das passende Fenster aktiv ist. Ideal für Steam Games und GeForce Now.
+- **Spiel-Modus:** Einstellungen → „Spiel-Modus“ aktivieren. Reduziert Overlay-Updates (2–5 Hz), weniger CPU-Last.
+- **Neue Aktionen (Action Editor):**  
+  - **random_delay** / **reaction_delay** – Zufallsverzögerung (Anti-Pattern).  
+  - **wait_for_health_color** / **click_at_health_color** – Warten auf bzw. Klick auf eine von mehreren Farben (z. B. Lebensbalken, Potion-Button).  
+  - **cooldown_wait** – Zufällige Wartezeit für Skill-Cooldowns.  
+  - **human_mouse_move** – Mausbewegung in Schritten mit Jitter (menschlicher).
+- **Anti-Erkennung (Einstellungen):** „Klick-Zufalls-Offset“ und „Zufalls-Delay vor jeder Aktion“ für weniger starre Muster.
+- **Spiel-Vorlagen (Profil-Tab):** „Spiel-Vorlagen“ – Vorlage erstellen (Name, Profil, Fenster-Filter), „Starten“ lädt das Profil und zeigt den Fenster-Filter für Makros.
+- **Makro-Kette:** Einstellungen → „Makro-Kette (IDs)“ (kommagetrennt, z. B. 1,2,3) und „Kette-Hotkey“. Ein Tastendruck startet die Makros nacheinander.
+- **Toggle-Makro:** „Toggle-Makro (ID)“ + „Toggle-Hotkey“ – gleicher Hotkey startet das Makro oder stoppt die Wiedergabe.
+- **Hotkey-Übersicht:** Toolbar → „Hotkeys“ zeigt alle globalen und Makro-Hotkeys inkl. Gaming-Maus (Seitentasten) und markiert Doppelbelegungen.
+- **Beispiele:** Siehe Tutorial „Gaming: Auto-Farming“ und „Color-Based: Health Monitor“ unten.
 
 ---
 

@@ -1,4 +1,4 @@
-# Advanced Auto Clicker v3.0 - Ultimate Automation Suite
+# Advanced Gaming v3.0 - Ultimate Automation Suite
 
 🔥 **DIE PROFESSIONELLSTE MAKRO-AUTOMATISIERUNG FÜR WINDOWS** 🔥
 
@@ -156,7 +156,9 @@ random_int(1, 5)
 - ✅ Vollständig anpassbar
 - ✅ Auto-Save
 - ✅ Notifications
-- ✅ Gaming Overlay
+- ✅ Gaming Overlay (Countdown, aktives Fenster, Minimal-Ansicht)
+- ✅ Anti-Erkennung (Klick-Offset, Zufalls-Delays)
+- ✅ Spiel-Vorlagen, Makro-Kette, Toggle-Makro
 - ✅ Minimize to Tray
 
 ---
@@ -177,6 +179,12 @@ random_int(1, 5)
 | **if_condition** | v2.0 | Bedingte Ausführung |
 | **wait_for_pixel_color** | v3.0 | Auf Pixelfarbe warten |
 | **click_at_color** | v3.0 | Auf Farbe klicken |
+| **random_delay** | v3.0 | Zufallsverzögerung (min/max Sek.) |
+| **reaction_delay** | v3.0 | Menschliche Reaktionszeit (ms) |
+| **wait_for_health_color** | v3.0 | Warten auf eine von mehreren Farben |
+| **click_at_health_color** | v3.0 | Klick auf erste Farbe aus Liste |
+| **cooldown_wait** | v3.0 | Zufällige Cooldown-Wartezeit |
+| **human_mouse_move** | v3.0 | Menschliche Mausbewegung (Schritte + Jitter) |
 
 ---
 
@@ -238,7 +246,7 @@ install.bat
 build.bat
 
 # .exe starten
-dist\AdvancedAutoClicker.exe
+dist\AdvancedGaming.exe
 ```
 
 **Vorteile:**
@@ -506,8 +514,8 @@ MIT License - Frei nutzbar für private & kommerzielle Zwecke.
 
 **Version 3.0.0** | Made with ❤️ | Windows 10/11
    ```bash
-   git clone https://github.com/yourusername/Advance_Autoclicker.git
-   cd Advance_Autoclicker
+   git clone https://github.com/yourusername/Advanced_Gaming.git
+   cd Advanced_Gaming
    ```
 
 2. **Installation ausführen**
@@ -568,10 +576,18 @@ MIT License - Frei nutzbar für private & kommerzielle Zwecke.
 
 **Tipp**: In den Einstellungen können Sie auch globale Hotkeys für Aufnahme-Start/Stop und Wiedergabe-Stop per Aufnahme festlegen!
 
+### Für Gamer (Steam, GeForce Now, Anti-Erkennung)
+- **Fenster-Filter:** Vordefinierte Presets für Steam, GeForce Now, Valorant, Minecraft, Roblox, GTA V, CS2, Elden Ring usw. – im Makro-Dialog unter „Vordefiniert“ wählen.
+- **Neue Aktionen:** `random_delay`, `reaction_delay`, `wait_for_health_color`, `click_at_health_color`, `cooldown_wait`, `human_mouse_move` (siehe Action-Tabelle oben).
+- **Anti-Erkennung:** Einstellungen → „Klick-Zufalls-Offset“ und „Zufalls-Delay vor jeder Aktion“.
+- **Spiel-Vorlagen:** Profil-Tab → Spiel-Vorlagen erstellen (Profil + Fenster-Filter), „Starten“ lädt das Setup.
+- **Makro-Kette & Toggle:** Einstellungen → Makro-Kette (IDs kommagetrennt) + Kette-Hotkey; Toggle-Makro (ID) + Toggle-Hotkey (gleicher Hotkey startet/stoppt).
+- **Hotkey-Übersicht:** Toolbar „Hotkeys“ zeigt alle Hotkeys inkl. Gaming-Maus (Seitentasten). Siehe auch **QUICK_START.md** → „Für Gamer“.
+
 ## 🏗️ Projektstruktur
 
 ```
-Advance_Autoclicker/
+Advanced_Gaming/
 ├── main.py                 # Haupteinstiegspunkt
 ├── requirements.txt        # Python-Abhängigkeiten
 ├── README.md              # Diese Datei
@@ -644,7 +660,7 @@ Advance_Autoclicker/
 ## 📝 Lizenz
 
 Dieses Projekt ist für den persönlichen Gebrauch gedacht. 
-© 2026 Advanced Auto Clicker
+© 2026 Advanced Gaming
 
 ## 🤝 Beiträge
 
@@ -656,4 +672,4 @@ Bei Fragen oder Problemen erstellen Sie bitte ein Issue im Repository.
 
 ---
 
-**Viel Spaß mit dem Advanced Auto Clicker!** 🎉
+**Viel Spaß mit Advanced Gaming!** 🎉

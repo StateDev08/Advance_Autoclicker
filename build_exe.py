@@ -11,7 +11,7 @@ def build_exe():
     """Erstellt die ausführbare Datei"""
     
     print("=" * 60)
-    print("Advanced Auto Clicker - Build Process")
+    print("Advanced Gaming - Build Process")
     print("=" * 60)
     print()
     
@@ -33,7 +33,7 @@ def build_exe():
     # PyInstaller-Optionen
     PyInstaller.__main__.run([
         'main.py',                          # Haupt-Skript
-        '--name=AdvancedAutoClicker',       # Name der .exe
+        '--name=AdvancedGaming',            # Name der .exe
         '--onefile',                        # Alles in einer Datei
         '--windowed',                       # Keine Konsole
         '--icon=NONE',                      # Kein Icon (kann später hinzugefügt werden)
@@ -54,7 +54,7 @@ def build_exe():
     print("=" * 60)
     print()
     print(f"Die ausführbare Datei befindet sich in:")
-    print(f"  {project_dir / 'dist' / 'AdvancedAutoClicker.exe'}")
+    print(f"  {project_dir / 'dist' / 'AdvancedGaming.exe'}")
     print()
 
 if __name__ == "__main__":

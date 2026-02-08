@@ -1,4 +1,4 @@
-# 🚀 Advanced Auto Clicker v2.0 - Installation & Upgrade Guide
+# 🚀 Advanced Gaming v2.0 - Installation & Upgrade Guide
 
 ## ✨ Version 2.0 - MEGA UPDATE (250% Verbesserung!)
 
@@ -322,10 +322,10 @@ Falls Sie einen Bug melden:
 3. Log-Datei anhängen
 
 ### Dateien für Debug
-- `data/logs/autoclicker.log` - Haupt-Log
+- `data/logs/advanced_gaming.log` - Haupt-Log
 - `data/logs/macro.log` - Makro-Ausführungs-Details
 - `data/logs/error.log` - Nur Fehler
-- `data/autoclicker.db` - Datenbank (enthält alle Makros)
+- `data/advanced_gaming.db` - Datenbank (enthält alle Makros)
 
 ---
 

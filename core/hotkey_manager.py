@@ -5,6 +5,7 @@ Hotkey-Manager - Verwaltet globale Tastenkombinationen
 from pynput import keyboard, mouse
 from typing import Dict, Callable, Optional
 import threading
+import logging
 
 
 class HotkeyManager:
@@ -20,16 +21,22 @@ class HotkeyManager:
 
         # Optionaler Debug-Callback, um erkannte Kombinationen anzuzeigen
         self.debug_callback: Optional[Callable[[str], None]] = None
+        # Doppelauslösung verhindern: pro Kombination nur einmal feuern, bis Tasten losgelassen
+        self._fired_combos: set = set()
 
     def register_hotkey(self, hotkey: str, callback: Callable):
         """Registriert einen Hotkey.
 
         Hotkey-Format entspricht den Strings aus den Einstellungen/Dialogs,
         z.B. "ctrl+shift+r", "f8", "mouse_x1".
+        Bei doppelter Registrierung ersetzt der letzte Aufruf den vorherigen.
         """
         if not hotkey:
             return
-        self.hotkeys[hotkey.lower()] = callback
+        normalized = hotkey.lower().strip()
+        if not normalized:
+            return
+        self.hotkeys[normalized] = callback
 
     def unregister_hotkey(self, hotkey: str):
         """Entfernt einen Hotkey"""
@@ -98,10 +105,14 @@ class HotkeyManager:
         """Key-Release Event Handler"""
         if not self.is_active:
             return
-
+        # Vor dem Entfernen: aktuelle Kombination merken, um "fired" zurückzusetzen
+        current_combo = "+".join(sorted(self.current_keys))
         key_str = self._key_to_string(key)
         if key_str and key_str in self.current_keys:
             self.current_keys.remove(key_str)
+        # Sobald Kombination nicht mehr gehalten wird: erlaube erneutes Auslösen
+        if current_combo:
+            self._fired_combos.discard(current_combo)
 
     def _on_mouse_click(self, x, y, button, pressed):
         """Mouse-Click Event Handler für Maus-Hotkeys"""
@@ -113,13 +124,14 @@ class HotkeyManager:
             return
 
         if pressed:
-            # Maustaste gedrückt -> in aktuelle Kombi aufnehmen
             self.current_keys.add(button_str)
             self._check_hotkeys()
         else:
-            # Maustaste losgelassen -> aus Kombi entfernen
+            current_combo = "+".join(sorted(self.current_keys))
             if button_str in self.current_keys:
                 self.current_keys.remove(button_str)
+            if current_combo:
+                self._fired_combos.discard(current_combo)
 
     # --- Hotkey-Auswertung ---
 
@@ -136,7 +148,10 @@ class HotkeyManager:
 
         for hotkey, callback in self.hotkeys.items():
             if current_combo == hotkey:
-                # Callback in separatem Thread ausführen
+                # Doppelauslösung verhindern: nur einmal pro "Gedrückthalten"
+                if current_combo in self._fired_combos:
+                    continue
+                self._fired_combos.add(current_combo)
                 thread = threading.Thread(
                     target=self._safe_call,
                     args=(callback,),
@@ -150,7 +165,7 @@ class HotkeyManager:
         try:
             callback(*args, **kwargs)
         except Exception as e:
-            print(f"Hotkey callback error: {e}")
+            logging.getLogger(__name__).warning("Hotkey callback error: %s", e)
 
     # --- Hilfsfunktionen ---
 
@@ -184,3 +199,25 @@ class HotkeyManager:
         """Normalisiert Hotkey-String (Reihenfolge der Teile egal)."""
         parts = [part.strip().lower() for part in hotkey_string.split("+") if part.strip()]
         return "+".join(sorted(parts))
+
+    @staticmethod
+    def format_hotkey_display(hotkey_string: str) -> str:
+        """Formatiert Hotkey-String für lesbare Anzeige (z. B. Strg+Umschalt+R)."""
+        if not hotkey_string or not hotkey_string.strip():
+            return ""
+        parts = [p.strip().lower() for p in hotkey_string.split("+") if p.strip()]
+        display = []
+        for p in parts:
+            if p == "ctrl" or p == "control":
+                display.append("Strg")
+            elif p == "shift":
+                display.append("Umschalt")
+            elif p == "alt":
+                display.append("Alt")
+            elif p == "cmd" or p == "win":
+                display.append("Win")
+            elif p.startswith("mouse_"):
+                display.append(p.replace("mouse_", "Maus-").title())
+            else:
+                display.append(p.upper() if len(p) <= 2 else p.title())
+        return "+".join(display)
